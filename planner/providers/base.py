@@ -7,6 +7,7 @@ from django.conf import settings
 from ..exceptions import RoutingProviderError
 
 METERS_PER_MILE = 1609.344
+CONNECT_TIMEOUT_SECONDS = 3
 
 # One session per process keeps the TLS connection to the provider open
 # between requests, which saves a handshake on every call after the first.
@@ -25,10 +26,27 @@ class Route:
 class RoutingProvider:
     name = ''
     label = ''
+    base_url_setting = ''
+
+    @property
+    def base_url(self):
+        return getattr(settings, self.base_url_setting)
 
     def route(self, start, finish):
         """Return the driving Route between two Locations, in one HTTP call."""
         raise NotImplementedError
+
+    def connect(self):
+        """Open the connection ahead of the first route request. Returns success.
+
+        A bare HEAD on the host: it completes the TLS handshake and leaves the
+        connection in the pool without asking the provider to compute anything.
+        """
+        try:
+            session.head(self.base_url, timeout=CONNECT_TIMEOUT_SECONDS)
+        except requests.RequestException:
+            return False
+        return True
 
     def _send(self, method, url, **kwargs):
         try:

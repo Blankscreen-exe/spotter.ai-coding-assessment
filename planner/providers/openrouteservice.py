@@ -1,5 +1,3 @@
-from django.conf import settings
-
 from .. import conf
 from ..exceptions import ProviderNotConfigured, RouteNotFound, RoutingProviderError
 from ..models import ProviderCredential
@@ -13,6 +11,7 @@ NO_ROUTE_CODES = {2009, 2010}
 class OpenRouteServiceProvider(RoutingProvider):
     name = conf.PROVIDER_ORS
     label = 'OpenRouteService'
+    base_url_setting = 'ORS_BASE_URL'
 
     def route(self, start, finish):
         credential = ProviderCredential.objects.filter(provider=self.name).first()
@@ -23,7 +22,7 @@ class OpenRouteServiceProvider(RoutingProvider):
             )
         response = self._send(
             'POST',
-            f'{settings.ORS_BASE_URL}/v2/directions/driving-car',
+            f'{self.base_url}/v2/directions/driving-car',
             headers={'Authorization': credential.api_key},
             json={
                 'coordinates': [[start.lon, start.lat], [finish.lon, finish.lat]],

@@ -1,5 +1,3 @@
-from django.conf import settings
-
 from .. import conf
 from ..exceptions import RouteNotFound, RoutingProviderError
 from .base import METERS_PER_MILE, Route, RoutingProvider
@@ -9,10 +7,11 @@ from .polyline import decode_polyline
 class OSRMProvider(RoutingProvider):
     name = conf.PROVIDER_OSRM
     label = 'OSRM'
+    base_url_setting = 'OSRM_BASE_URL'
 
     def route(self, start, finish):
         url = (
-            f'{settings.OSRM_BASE_URL}/route/v1/driving/'
+            f'{self.base_url}/route/v1/driving/'
             f'{start.lon:.6f},{start.lat:.6f};{finish.lon:.6f},{finish.lat:.6f}'
         )
         response = self._send('GET', url, params={
