@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fuel route planner</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    html, body { height: 100%; margin: 0; font: 14px/1.4 system-ui, sans-serif; color: #1f2933; }
+    body { display: flex; }
+    aside { width: 360px; padding: 16px; overflow-y: auto; box-sizing: border-box; border-right: 1px solid #d9dee3; }
+    #map { flex: 1; }
+    h1 { font-size: 18px; margin: 0 0 12px; }
+    form { display: grid; gap: 8px; margin-bottom: 16px; }
+    input, button { font: inherit; padding: 6px 8px; }
+    button { cursor: pointer; }
+    .error { background: #fdecea; border: 1px solid #f5c2c0; padding: 8px; border-radius: 4px; }
+    .totals { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+    .totals div { background: #f3f5f7; padding: 8px; border-radius: 4px; }
+    .totals b { display: block; font-size: 17px; }
+    ol { padding-left: 20px; margin: 0; }
+    li { margin-bottom: 10px; }
+    li small { color: #52606d; display: block; }
+    .note { color: #52606d; font-size: 12px; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <aside>
+    <h1>Fuel route planner</h1>
+    <form method="get">
+      <input name="start" placeholder="Start, e.g. Chicago, IL" value="{{ params.start }}" required>
+      <input name="finish" placeholder="Finish, e.g. Los Angeles, CA" value="{{ params.finish }}" required>
+      <button type="submit">Plan route</button>
+    </form>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    {% if plan %}
+      <div class="totals">
+        <div>Fuel cost<b>${{ plan.summary.total_fuel_cost|floatformat:2 }}</b></div>
+        <div>Distance<b>{{ plan.summary.distance_miles|floatformat:0 }} mi</b></div>
+        <div>Fuel stops<b>{{ plan.summary.fuel_stops }}</b></div>
+        <div>Gallons bought<b>{{ plan.summary.gallons_purchased|floatformat:1 }}</b></div>
+      </div>
+      <ol>
+        {% for stop in plan.fuel_stops %}
+          <li>
+            <b>{{ stop.name }}</b>
+            <small>{{ stop.city }}, {{ stop.state }} &middot; mile {{ stop.mile_marker|floatformat:0 }}</small>
+            <small>{{ stop.gallons_purchased|floatformat:1 }} gal at ${{ stop.price_per_gallon|floatformat:3 }} = ${{ stop.cost|floatformat:2 }}</small>
+          </li>
+        {% empty %}
+          <li>No fuel stop needed: the trip fits in the starting tank.</li>
+        {% endfor %}
+      </ol>
+      <p class="note">
+        Starts with {{ plan.vehicle.initial_range_miles|floatformat:0 }} miles of fuel on board.
+        Routing by {{ plan.meta.routing_provider }}. Station positions are town-level.
+      </p>
+    {% endif %}
+  </aside>
+  <div id="map"></div>
+
+  {{ plan|json_script:"plan-data" }}
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const plan = JSON.parse(document.getElementById('plan-data').textContent);
+    const map = L.map('map').setView([39.5, -98.35], 4);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(map);
+
+    if (plan) {
+      const line = L.geoJSON(plan.route, { style: { color: '#1d4ed8', weight: 4 } }).addTo(map);
+      map.fitBounds(line.getBounds(), { padding: [30, 30] });
+
+      const endpoint = (place, label, color) =>
+        L.circleMarker([place.lat, place.lon], { radius: 8, color, fillColor: color, fillOpacity: 1 })
+          .addTo(map)
+          .bindPopup(`<b>${label}</b><br>${place.name}`);
+      endpoint(plan.start, 'Start', '#15803d');
+      endpoint(plan.finish, 'Finish', '#b91c1c');
+
+      for (const stop of plan.fuel_stops) {
+        const popup = document.createElement('div');
+        const title = document.createElement('b');
+        title.textContent = `${stop.order}. ${stop.name}`;
+        const detail = document.createElement('div');
+        detail.textContent =
+          `${stop.city}, ${stop.state} - ${stop.gallons_purchased.toFixed(1)} gal at ` +
+          `$${stop.price_per_gallon.toFixed(3)} = $${stop.cost.toFixed(2)}`;
+        popup.append(title, detail);
+        L.marker([stop.lat, stop.lon]).addTo(map).bindPopup(popup);
+      }
+    }
+  </script>
+</body>
+</html>
