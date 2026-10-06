@@ -1,0 +1,53 @@
+# Local stack: the API on PostgreSQL with Redis as the route cache.
+#
+#   docker compose up --build
+#   http://localhost:8000/map/
+#
+# The credentials below are for this local stack only.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: fuelroute
+      POSTGRES_USER: fuelroute
+      POSTGRES_PASSWORD: fuelroute
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Checked over TCP on purpose: during first-run initialisation Postgres
+      # answers on its socket only, then restarts, and "healthy" must mean the
+      # real server is accepting connections.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U fuelroute -d fuelroute"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  cache:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgres://fuelroute:fuelroute@db:5432/fuelroute
+      REDIS_URL: redis://cache:6379/0
+      DJANGO_DEBUG: "false"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-local-compose-stack-only}
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+
+volumes:
+  pgdata:
