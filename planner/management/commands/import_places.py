@@ -4,6 +4,7 @@ import re
 import zipfile
 
 from django.conf import settings
+from django.core.cache import cache
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
@@ -74,6 +75,7 @@ class Command(BaseCommand):
             census.delete()
             Place.objects.bulk_create(places, batch_size=2000)
         reset_index()
+        cache.clear()  # cached plans were built from the old data
         aliases = sum(place.is_alias for place in places)
         self.stdout.write(self.style.SUCCESS(f'Loaded {len(places) - aliases} places and {aliases} aliases.'))
         if unlinked:

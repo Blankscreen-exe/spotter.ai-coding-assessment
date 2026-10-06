@@ -89,6 +89,30 @@ class RouteApiTests(TripFixture):
         self.route_call.assert_called_once()
         self.assertEqual(first['fuel_stops'], second['fuel_stops'])
 
+    def test_repeat_is_served_from_the_plan_cache(self):
+        first, second = self.plan().json(), self.plan().json()
+        self.assertEqual(first['meta']['served_from'], 'routing provider')
+        self.assertEqual(second['meta']['served_from'], 'plan cache')
+
+    def test_same_trip_with_other_parameters_reuses_the_route(self):
+        self.plan()
+        body = self.plan(stop_cost=0).json()
+        self.assertEqual(body['meta']['served_from'], 'route cache')
+        self.route_call.assert_called_once()
+
+    def test_changed_setting_is_not_served_a_stale_plan(self):
+        self.plan()
+        Setting.objects.filter(key=conf.MPG).update(value='20')
+        body = self.plan().json()
+        self.assertEqual(body['vehicle']['miles_per_gallon'], 20.0)
+        self.assertEqual(body['meta']['served_from'], 'route cache')
+
+    def test_cached_plan_echoes_each_request_as_typed(self):
+        self.plan()
+        body = self.plan(start='alpha ks').json()
+        self.assertEqual(body['meta']['served_from'], 'plan cache')
+        self.assertEqual(body['start']['query'], 'alpha ks')
+
     def test_get_with_query_string(self):
         response = self.client.get(self.url, {'start': 'Alpha, KS', 'finish': 'Omega, OH'})
         self.assertEqual(response.status_code, 200)

@@ -4,6 +4,7 @@ from decimal import Decimal
 
 import requests
 from django.conf import settings
+from django.core.cache import cache
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
@@ -63,7 +64,7 @@ class Command(BaseCommand):
             ))
 
         census = self._census_places()
-        cache = NominatimCache(settings.NOMINATIM_CACHE)
+        lookups = NominatimCache(settings.NOMINATIM_CACHE)
         town_place = {}  # (city, state) as the CSV spells it -> Place id
         geocoded, never_asked = {}, set()  # towns the Census file does not list
         for city, state in {(station.city, station.state) for station in stations}:
@@ -72,11 +73,11 @@ class Command(BaseCommand):
                 town_place[(city, state)] = match
                 continue
             try:
-                geocoded[(city, state)] = cache.get(city, state)
+                geocoded[(city, state)] = lookups.get(city, state)
             except KeyError:
                 never_asked.add((city, state))
         if options['geocode_missing'] and never_asked:
-            geocoded.update(self._ask_nominatim(cache, never_asked))
+            geocoded.update(self._ask_nominatim(lookups, never_asked))
             never_asked = set()
 
         with transaction.atomic():
@@ -95,6 +96,7 @@ class Command(BaseCommand):
                 station.place_id = town_place.get((station.city, station.state))
             FuelStation.objects.bulk_create(stations, batch_size=2000)
         reset_index()
+        cache.clear()  # cached plans were built from the old data
 
         sources = Counter(
             Place.SOURCE_NOMINATIM if (station.city, station.state) in by_nominatim else Place.SOURCE_CENSUS
@@ -122,17 +124,17 @@ class Command(BaseCommand):
             places.setdefault((key, state), pk)
         return places
 
-    def _ask_nominatim(self, cache, towns):
+    def _ask_nominatim(self, lookups, towns):
         self.stdout.write(f'Asking Nominatim about {len(towns)} towns, about 1 per second...')
         answers = {}
         try:
             for done, town in enumerate(sorted(towns), start=1):
-                answers[town] = cache.fetch(*town)
+                answers[town] = lookups.fetch(*town)
                 if done % 25 == 0:
-                    cache.save()
+                    lookups.save()
                     self.stdout.write(f'  {done}/{len(towns)}')
         except requests.RequestException as exc:
             self.stderr.write(self.style.ERROR(f'Nominatim lookup stopped early: {exc}'))
         finally:
-            cache.save()
+            lookups.save()
         return answers

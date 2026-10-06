@@ -1,5 +1,14 @@
-"""Plan a trip: resolve the endpoints, fetch the route, pick the fuel stops."""
+"""Plan a trip: resolve the endpoints, fetch the route, pick the fuel stops.
 
+Two caches sit in front of the work, checked in this order:
+
+- the finished plan, keyed by the trip and every setting that shapes it, so an
+  identical request is answered without recomputing anything;
+- the provider's route, keyed by the trip alone, so asking for the same trip
+  with a different stop cost or starting fuel still makes no routing call.
+"""
+
+import hashlib
 import logging
 import time
 from decimal import ROUND_HALF_UP, Decimal
@@ -23,27 +32,45 @@ CENT = Decimal('0.01')
 # copy that still draws cleanly.
 MAX_GEOMETRY_POINTS = 3000
 
+FROM_PLAN_CACHE = 'plan cache'
+FROM_ROUTE_CACHE = 'route cache'
+FROM_PROVIDER = 'routing provider'
+
 
 def _money(value):
     return Decimal(str(value)).quantize(CENT, rounding=ROUND_HALF_UP)
 
 
-def _fetch_route(provider, start, finish):
-    """Return (route, external calls made). Identical trips reuse the cached route."""
-    key = f'route:{provider.name}:{start.lat:.5f},{start.lon:.5f}:{finish.lat:.5f},{finish.lon:.5f}'
-    # The cache is an optimisation: if it is down, plan the trip without it.
+# The cache is an optimisation: if it is down, plan the trip without it.
+
+def _cache_get(key):
     try:
-        route = cache.get(key)
+        return cache.get(key)
     except Exception:
-        logger.warning('Route cache read failed', exc_info=True)
-        route = None
+        logger.warning('Cache read failed', exc_info=True)
+        return None
+
+
+def _cache_set(key, value):
+    try:
+        cache.set(key, value, settings.ROUTE_CACHE_SECONDS)
+    except Exception:
+        logger.warning('Cache write failed', exc_info=True)
+
+
+def _trip_key(kind, provider, start, finish, *parameters):
+    trip = (provider.name, round(start.lat, 5), round(start.lon, 5), round(finish.lat, 5), round(finish.lon, 5))
+    return f'{kind}:' + hashlib.sha256(repr(trip + parameters).encode()).hexdigest()[:32]
+
+
+def _fetch_route(provider, start, finish):
+    """Return (route, external calls made)."""
+    key = _trip_key('route', provider, start, finish)
+    route = _cache_get(key)
     if route is not None:
         return route, 0
     route = provider.route(start, finish)
-    try:
-        cache.set(key, route, settings.ROUTE_CACHE_SECONDS)
-    except Exception:
-        logger.warning('Route cache write failed', exc_info=True)
+    _cache_set(key, route)
     return route, 1
 
 
@@ -56,25 +83,9 @@ def _thin(coordinates):
     return np.round(coordinates[keep], 5).tolist()
 
 
-def plan_trip(start_text, finish_text, provider_name=None, initial_range_miles=None, stop_cost=None,
-              include_geometry=True):
-    started = time.perf_counter()
-    config = conf.load_settings()
-    range_miles, mpg = config[conf.RANGE_MILES], config[conf.MPG]
-    if initial_range_miles is None:
-        initial_range_miles = range_miles
-    elif initial_range_miles > range_miles:
-        raise InvalidRequest(f'initial_range_miles cannot exceed the vehicle range of {range_miles:g} miles.')
-
-    if stop_cost is None:
-        stop_cost = config[conf.STOP_COST]
-
-    start = resolve_location(start_text)
-    finish = resolve_location(finish_text)
-    provider = get_provider(provider_name or config[conf.ROUTING_PROVIDER])
-    route, external_calls = _fetch_route(provider, start, finish)
-
-    on_route = stations_along(route.coordinates, route.distance_miles, config[conf.CORRIDOR_MILES])
+def _build_plan(route, range_miles, mpg, corridor_miles, stop_cost, initial_range_miles):
+    """Everything in the response that depends only on the trip and the settings."""
+    on_route = stations_along(route.coordinates, route.distance_miles, corridor_miles)
     purchases = plan_fuel_stops(
         [Candidate(mile=s.mile, price=s.station['price'], ref=s) for s in on_route],
         trip_miles=route.distance_miles,
@@ -108,9 +119,7 @@ def plan_trip(start_text, finish_text, provider_name=None, initial_range_miles=N
             'cost': float(cost),
         })
 
-    plan = {
-        'start': {'query': start.query, 'name': start.name, 'lat': start.lat, 'lon': start.lon},
-        'finish': {'query': finish.query, 'name': finish.name, 'lat': finish.lat, 'lon': finish.lon},
+    return {
         'summary': {
             'distance_miles': round(route.distance_miles, 1),
             'duration_hours': round(route.duration_seconds / 3600, 2),
@@ -127,20 +136,60 @@ def plan_trip(start_text, finish_text, provider_name=None, initial_range_miles=N
         },
         'planning': {
             'stop_cost': stop_cost,
-            'corridor_miles': config[conf.CORRIDOR_MILES],
+            'corridor_miles': corridor_miles,
         },
         'fuel_stops': stops,
-    }
-    if include_geometry:
-        plan['route'] = {
+        'route': {
             'type': 'Feature',
             'properties': {'provider': route.provider},
             'geometry': {'type': 'LineString', 'coordinates': _thin(route.coordinates)},
-        }
-    plan['meta'] = {
-        'routing_provider': route.provider,
-        'routing_api_calls': external_calls,
+        },
         'stations_considered': len(on_route),
+    }
+
+
+def plan_trip(start_text, finish_text, provider_name=None, initial_range_miles=None, stop_cost=None,
+              include_geometry=True):
+    started = time.perf_counter()
+    config = conf.load_settings()
+    range_miles, mpg, corridor_miles = config[conf.RANGE_MILES], config[conf.MPG], config[conf.CORRIDOR_MILES]
+    if initial_range_miles is None:
+        initial_range_miles = range_miles
+    elif initial_range_miles > range_miles:
+        raise InvalidRequest(f'initial_range_miles cannot exceed the vehicle range of {range_miles:g} miles.')
+    if stop_cost is None:
+        stop_cost = config[conf.STOP_COST]
+
+    start = resolve_location(start_text)
+    finish = resolve_location(finish_text)
+    provider = get_provider(provider_name or config[conf.ROUTING_PROVIDER])
+
+    parameters = (range_miles, mpg, corridor_miles, stop_cost, initial_range_miles)
+    plan_key = _trip_key('plan', provider, start, finish, *parameters)
+    built = _cache_get(plan_key)
+    if built is not None:
+        external_calls, served_from = 0, FROM_PLAN_CACHE
+    else:
+        route, external_calls = _fetch_route(provider, start, finish)
+        served_from = FROM_PROVIDER if external_calls else FROM_ROUTE_CACHE
+        built = _build_plan(route, *parameters)
+        _cache_set(plan_key, built)
+
+    plan = {
+        'start': {'query': start.query, 'name': start.name, 'lat': start.lat, 'lon': start.lon},
+        'finish': {'query': finish.query, 'name': finish.name, 'lat': finish.lat, 'lon': finish.lon},
+        'summary': built['summary'],
+        'vehicle': built['vehicle'],
+        'planning': built['planning'],
+        'fuel_stops': built['fuel_stops'],
+    }
+    if include_geometry:
+        plan['route'] = built['route']
+    plan['meta'] = {
+        'routing_provider': provider.name,
+        'routing_api_calls': external_calls,
+        'served_from': served_from,
+        'stations_considered': built['stations_considered'],
         'elapsed_ms': round((time.perf_counter() - started) * 1000, 1),
     }
     return plan
