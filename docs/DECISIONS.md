@@ -320,7 +320,7 @@ Smaller calls, all Claude defaults that I kept:
 
 ## 5. How it is verified
 
-- 121 automated tests covering 94% of the Python lines, run on both SQLite and PostgreSQL 17.
+- 122 automated tests covering 94% of the Python lines, run on both SQLite and PostgreSQL 17.
 - The rate limit was exercised against the running stack: with the limit then at
   60 a minute, 65 quick requests gave 60 successes and 5 refusals with a
   `Retry-After` header.
