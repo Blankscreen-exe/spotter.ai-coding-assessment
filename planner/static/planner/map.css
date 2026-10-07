@@ -4,6 +4,9 @@
   --blue: #1d4ed8; --blue-soft: #e8efff; --green: #15803d; --green-soft: #e6f4ea;
   --red: #b91c1c; --red-soft: #fdecea; --amber: #92400e; --amber-soft: #fef3c7;
   --band: #0f172a; --band-ink: #fff; --band-muted: #cbd5e1; --band-edge: #475569;       /* the dark band the numbers sit on */
+  /* One colour per number on the band. The four were checked to stay apart for colour-blind readers,
+     and each number keeps its label, so colour is never the only thing telling them apart. */
+  --kpi-cost: #86efac; --kpi-stops: #60a5fa; --kpi-miles: #f472b6; --kpi-gallons: #fbbf24;
   --bar: #e9eef3; --bar-ink: #3e4c59; --bar-hover: #dde5ec; --bar-edge: #cbd5df;       /* the light bar the tab names sit on */
   --side: min(400px, 100vw);              /* width of a side drawer */
   --panel: clamp(130px, 16vh, 180px);     /* height of the bottom drawer's content when open: kept small, tables scroll */
@@ -72,7 +75,11 @@ button { font: inherit; cursor: pointer; }
 #strip .money b { font-size: 24px; display: block; line-height: 1.1; }
 #strip .fact b { font-size: 17px; display: block; line-height: 1.2; }
 #strip .money span, #strip .fact span { color: var(--band-muted); font-size: 12px; }
-/* The two things the reader can change: each a number in a box with an arrow either side. */
+#strip .money b { color: var(--kpi-cost); }
+#strip .stops b { color: var(--kpi-stops); }
+#strip .miles b { color: var(--kpi-miles); }
+#strip .gallons b { color: var(--kpi-gallons); }
+/* The results are coloured; the two things the reader can change are white, in a box with an arrow either side. */
 #strip .knob { display: grid; gap: 3px; justify-items: start; font-size: 12px; color: var(--band-muted); }
 .stepper { display: inline-flex; align-items: center; border: 1px solid var(--band-edge); border-radius: 6px; background: rgba(255, 255, 255, .06); }
 .knob:hover .stepper { border-color: var(--band-muted); }

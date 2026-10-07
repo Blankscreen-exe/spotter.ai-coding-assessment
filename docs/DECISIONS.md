@@ -381,6 +381,14 @@ is visible at once.
     compared with, and whatever the server is set to is always within the
     counter's reach. A run of clicks or a spin of the wheel is sent as one
     request, 0.3 seconds after the last change.
+13. **A colour for each number on the dark band.** In white they all looked
+    the same to me. The fuel bill is now green, the stops blue, the miles pink
+    and the gallons amber, while the two counters stay white because they are
+    what you change, not what you get. Claude ran the colours through a
+    colour-blindness check and dropped its first set, in which the blue and a
+    violet were nearly identical to someone red-green colour-blind. Each
+    number keeps its label, so colour is never the only thing telling them
+    apart.
 
 ## 4. Things testing caught
 
