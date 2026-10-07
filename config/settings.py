@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
 
 import dj_database_url
@@ -149,14 +150,17 @@ if STATIC_ROOT.is_dir():
     MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
 
 
-# Email
-# https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
-
-MAILERS = {
-    'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
-    },
-}
+# HTTPS hardening for a deployment behind a TLS-terminating proxy or load
+# balancer. Off by default so the local stack works over plain http.
+if os.environ.get('DJANGO_SECURE', '').lower() in ('1', 'true', 'yes'):
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = True
+    SECURE_REDIRECT_EXEMPT = [r'^healthz/$']  # health checks arrive over plain http
+    # includeSubDomains and preload are left off: they commit a whole domain,
+    # which is not this service's decision to make.
+    SECURE_HSTS_SECONDS = int(os.environ.get('DJANGO_HSTS_SECONDS', 3600))
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 
 # Django REST framework: JSON only, no auth (the brief asks for an open API).
@@ -166,11 +170,16 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [],
     'DEFAULT_PERMISSION_CLASSES': [],
     'UNAUTHENTICATED_USER': None,
+    'EXCEPTION_HANDLER': 'planner.handlers.api_exception_handler',
 }
 
+# Requests per client on the route endpoint, e.g. "60/min". Empty disables it.
+API_RATE_LIMIT = os.environ.get('API_RATE_LIMIT', '60/min')
+
 # Redis when REDIS_URL is set, so every worker shares one route cache;
-# otherwise a per-process cache that needs no service.
-if os.environ.get('REDIS_URL'):
+# otherwise a per-process cache that needs no service. The test suite clears
+# the cache freely, so it always gets a private one.
+if os.environ.get('REDIS_URL') and sys.argv[1:2] != ['test']:
     CACHES = {
         'default': {
             'BACKEND': 'django.core.cache.backends.redis.RedisCache',
