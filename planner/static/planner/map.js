@@ -6,7 +6,7 @@
 
   const config = JSON.parse(document.getElementById('planner-config').textContent);
   const DEFAULTS = config.defaults;  // what the server uses when a request does not say otherwise
-  const TABS = ['timeline', 'plan', 'tradeoff', 'api', 'server'];
+  const TABS = ['timeline', 'plan', 'tradeoff', 'geojson', 'api', 'server'];
   const EXAMPLES = [
     { label: 'Coast to coast', start: 'New York, NY', finish: 'Los Angeles, CA' },
     { label: 'Midwest to Gulf', start: 'Chicago, IL', finish: 'Houston, TX' },
@@ -31,6 +31,7 @@
   let tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'timeline';
   let dockOpen = TABS.includes(location.hash.slice(1));
   const comparisons = new Map();  // trip and starting fuel -> plans fetched for the "Stops against cost" tab, by cost
+  let geoWithStations = false;    // whether the GeoJSON tab also lists the stations passed over
 
   // ---------- talking to the API ----------
 
@@ -276,6 +277,65 @@
 
   const comparisonKey = (call) => `${call.body.start.name}|${call.body.finish.name}|${call.body.vehicle.initial_range_miles}`;
 
+  // The plan as a GeoJSON FeatureCollection: the route line, its two ends, each fuel stop and, if asked,
+  // the stations passed over. The colour and symbol properties are the "simplestyle" ones that geojson.io
+  // and GitHub draw from, so it looks there much as it does here.
+  function tripGeoJSON(body, withPassedOver) {
+    const point = (place, properties) => ({
+      type: 'Feature', properties, geometry: { type: 'Point', coordinates: [place.lon, place.lat] },
+    });
+    const chosen = new Set(body.fuel_stops.map((stop) => stop.station_id));
+    const passedOver = withPassedOver ? (body.candidate_stations || []).filter((station) => !chosen.has(station.station_id)) : [];
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: {
+            name: `${body.start.name} to ${body.finish.name}`,
+            distance_miles: body.summary.distance_miles,
+            duration_hours: body.summary.duration_hours,
+            fuel_stops: body.summary.fuel_stops,
+            total_fuel_cost: body.summary.total_fuel_cost,
+            stroke: '#1d4ed8',
+            'stroke-width': 4,
+          },
+          geometry: body.route.geometry,
+        },
+        point(body.start, { role: 'start', name: body.start.name, 'marker-color': '#15803d' }),
+        ...body.fuel_stops.map((stop) => point(stop, {
+          role: 'fuel stop',
+          order: stop.order,
+          name: stop.name,
+          address: stop.address,
+          city: stop.city,
+          state: stop.state,
+          mile_marker: stop.mile_marker,
+          price_per_gallon: stop.price_per_gallon,
+          gallons_purchased: stop.gallons_purchased,
+          cost: stop.cost,
+          'marker-color': '#1d4ed8',
+          ...(stop.order <= 9 ? { 'marker-symbol': String(stop.order) } : {}),  // the symbols stop at 9
+        })),
+        point(body.finish, { role: 'finish', name: body.finish.name, 'marker-color': '#b91c1c' }),
+        ...passedOver.map((station) => point(station, {
+          role: 'considered, not chosen',
+          name: station.name,
+          city: station.city,
+          state: station.state,
+          mile_marker: station.mile_marker,
+          price_per_gallon: station.price_per_gallon,
+          'marker-color': '#f97316',
+          'marker-size': 'small',
+        })),
+      ],
+    };
+  }
+
+  // One feature to a line: still valid JSON, and the long route line does not bury the rest.
+  const geoText = (collection) => '{"type":"FeatureCollection","features":[\n'
+    + collection.features.map((feature) => JSON.stringify(feature)).join(',\n') + '\n]}';
+
   const PANELS = {
     timeline: () => '<svg id="chart" role="img" aria-label="Fuel in the tank along the trip"></svg>',
 
@@ -311,6 +371,48 @@
           return start + `<td class="num">${Number(summary.fuel_stops)}</td><td class="num">${money(summary.total_fuel_cost)}</td>
             <td class="num">${over < 0.005 ? '&ndash;' : '+' + money(over)}</td></tr>`;
         }).join('') + '</table>';
+    },
+
+    // The plan as GeoJSON, to copy into geojson.io or any other map tool. Built from elements, not markup.
+    geojson: (body) => {
+      const collection = tripGeoJSON(body, geoWithStations);
+      const text = geoText(collection);
+      const make = (tag, properties) => Object.assign(document.createElement(tag), properties);
+
+      const copy = make('button', { type: 'button', className: 'secondary', textContent: 'Copy' });
+      const tick = make('input', { type: 'checkbox', checked: geoWithStations });
+      const choice = make('label');
+      choice.append(tick, ' Include the stations passed over');
+      const note = make('span', { className: 'note' });
+      note.append(
+        `${collection.features.length} features, ${Math.max(1, Math.round(text.length / 1024))} KB. Paste it into `,
+        make('a', { href: 'https://geojson.io/', target: '_blank', rel: 'noopener', textContent: 'geojson.io' }),
+        '.',
+      );
+      const area = make('textarea', { readOnly: true, spellcheck: false, value: text });
+      area.setAttribute('aria-label', 'The plan as GeoJSON');
+
+      copy.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (error) {
+          area.select();  // no clipboard access (an insecure address, say): fall back to the old way
+          document.execCommand('copy');
+        }
+        copy.textContent = 'Copied';
+        setTimeout(() => { copy.textContent = 'Copy'; }, 1500);
+      });
+      tick.addEventListener('change', () => {
+        geoWithStations = tick.checked;
+        showPanel();
+      });
+      area.addEventListener('focus', () => area.select());
+
+      const bar = make('div', { className: 'output-bar' });
+      bar.append(copy, choice, note);
+      const box = make('div', { className: 'output' });
+      box.append(bar, area);
+      return box;
     },
 
     // Built with textContent so that nothing in a response can be read as HTML.

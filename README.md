@@ -59,10 +59,16 @@ and nothing more: every plan on screen came from `POST /api/v1/route/`.
 2. It then shows the route and stops on a map, the fuel bill, and two counters
    (cost per stop, starting fuel). Click an arrow beside one, or scroll over
    it, and the trip re-plans.
-3. Along the bottom are five tab names. Clicking one raises a panel: the fuel
+3. Along the bottom are six tab names. Clicking one raises a panel: the fuel
    in the tank along the trip, the fuel plan as a table, the same trip at the
-   two cost-per-stop settings either side of yours, the API call behind the
-   plan, or server details. Clicking it again lowers the panel and gives the map the room back.
+   two cost-per-stop settings either side of yours, the plan as GeoJSON, the
+   API call behind the plan, or server details. Clicking it again lowers the
+   panel and gives the map the room back.
+
+The GeoJSON tab holds the route, its two ends and the fuel stops as one
+FeatureCollection, with a Copy button, for pasting into
+[geojson.io](https://geojson.io/) or any other map tool. A tick box adds the
+stations that were passed over.
 
 Pointing at a stop on the map, the chart or the table highlights it in the
 others. The map also shows what the plan was chosen from. The orange dots along
@@ -299,12 +305,13 @@ python manage.py test                                  # SQLite
 docker compose exec web python manage.py test          # PostgreSQL
 ```
 
-184 tests, 95% line coverage of the Python code. The optimizer is checked against
+187 tests, 95% line coverage of the Python code. The optimizer is checked against
 brute force and an independent formula on random routes. The routing providers
 and Nominatim are mocked, and the suite always uses a private cache.
 
-Thirteen of the tests drive the map page in a real browser (the dialog, the
-drawers, the counters, the map, and text that tries to be markup). They need the
+Sixteen of the tests drive the map page in a real browser (the dialog, the
+drawers, the counters, the map, the GeoJSON tab, and text that tries to be
+markup). They need the
 development requirements and a Chrome or Edge that is already installed, and
 they are skipped without them, as in the Docker image:
 
@@ -314,7 +321,7 @@ ruff check . && ruff format --check .                  # linter and formatter
 python manage.py test                                  # now includes the browser tests
 ```
 
-Those thirteen need the network, because the page loads Leaflet from a CDN; the
+Those sixteen need the network, because the page loads Leaflet from a CDN; the
 rest of the suite makes no network calls. A GitHub Actions workflow
 (`.github/workflows/ci.yml`) runs the linter, the tests on SQLite with the
 browser tests, and the tests on PostgreSQL.

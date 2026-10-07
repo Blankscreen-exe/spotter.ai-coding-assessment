@@ -132,6 +132,13 @@ dl.facts dd { margin: 0; font-weight: 600; }
 /* fuel timeline */
 /* Sized from the open height directly, so it is right from the first frame of the slide. */
 #chart { width: 100%; height: calc(var(--panel) - 22px); display: block; }
+/* The GeoJSON tab: a copy button and a choice over the text itself, which fills what is left of the panel. */
+.output-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 6px; font-size: 13px; }
+.output-bar label { display: inline-flex; align-items: center; gap: 5px; }
+.output-bar .note { margin: 0; }
+.output textarea { display: block; width: 100%; height: calc(var(--panel) - 60px); padding: 8px 10px; resize: none; white-space: pre;
+                   border: 1px solid var(--line); border-radius: 6px; background: var(--soft); color: var(--ink);
+                   font: 12px/1.45 ui-monospace, Consolas, monospace; }
 #chart text { font-size: 11px; fill: var(--muted); }
 #chart .stopmark text.n { fill: var(--blue); font-weight: 700; }
 #chart .price { fill: var(--ink); }
@@ -231,4 +238,5 @@ dl.facts dd { margin: 0; font-weight: 600; }
   body.settings-open { padding-right: 0; }
   body.dock-open #panel { height: auto; overflow-x: auto; }
   #chart { height: 226px; }
+  .output textarea { height: 226px; }
 }

@@ -332,7 +332,7 @@ class RouteMapTests(TestCase):
     def test_bottom_drawer_is_sent_closed_with_only_its_tab_names(self):
         content = self.client.get(self.url).content.decode()
         dock = content[content.index('id="dock"') : content.index('id="onboarding"')]
-        self.assertEqual(dock.count('class="tab" aria-expanded="false" aria-controls="panel"'), 5)
+        self.assertEqual(dock.count('class="tab" aria-expanded="false" aria-controls="panel"'), 6)
         self.assertIn('id="collapse" hidden', dock)
         self.assertNotIn('dock-open', content.split('<body')[1].split('>')[0])
 

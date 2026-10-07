@@ -9,6 +9,7 @@ The page loads Leaflet from a CDN, so they also need the network. Map tiles are
 answered here instead, to leave OpenStreetMap's servers alone.
 """
 
+import json
 import os
 import re
 import time
@@ -167,6 +168,57 @@ class MapPageTests(PageTestCase):
         costs = self.page.evaluate("[...document.querySelectorAll('#panel tr.pick')].map((row) => row.dataset.cost)")
         self.assertEqual(costs, ['3', '4', '5', '6', '7'])
         expect(self.page.locator('#panel tr.pick.current')).to_contain_text('$5 (selected)')
+
+    # ---------- the GeoJSON tab ----------
+
+    def geojson(self):
+        return json.loads(self.page.locator('#panel textarea').input_value())
+
+    def test_geojson_tab_holds_the_plan_as_a_feature_collection(self):
+        self.open_trip(tab='#geojson')
+        collection = self.geojson()
+        self.assertEqual(collection['type'], 'FeatureCollection')
+        self.assertEqual(
+            [(feature['geometry']['type'], feature['properties'].get('role')) for feature in collection['features']],
+            [
+                ('LineString', None),
+                ('Point', 'start'),
+                ('Point', 'fuel stop'),
+                ('Point', 'fuel stop'),
+                ('Point', 'finish'),
+            ],
+        )
+        route, start, stop, _, finish = collection['features']
+        # Longitude first, as GeoJSON has it, from one end of the road to the other.
+        self.assertEqual(
+            (route['geometry']['coordinates'][0], route['geometry']['coordinates'][-1]), ([-100, 40], [-80, 40])
+        )
+        self.assertEqual((start['geometry']['coordinates'], finish['geometry']['coordinates']), ([-100, 40], [-80, 40]))
+        self.assertEqual(route['properties']['name'], 'Alpha, KS to Omega, OH')
+        self.assertEqual(route['properties']['fuel_stops'], 2)
+        self.assertEqual(stop['properties']['order'], 1)
+        self.assertEqual(stop['geometry']['coordinates'][1], 40)
+        for told in ('name', 'city', 'mile_marker', 'price_per_gallon', 'gallons_purchased', 'cost'):
+            self.assertIn(told, stop['properties'])
+
+    def test_geojson_can_also_list_the_stations_passed_over(self):
+        self.open_trip(tab='#geojson')
+        self.page.check('#panel input[type=checkbox]')
+        # Four stations lie on the road and two are stops, so two more points.
+        self.eventually(lambda: len(self.geojson()['features']) == 7)
+        roles = [feature['properties'].get('role') for feature in self.geojson()['features']]
+        self.assertEqual(roles.count('considered, not chosen'), 2)
+        expect(self.page.locator('#panel input[type=checkbox]')).to_be_checked()  # the choice survives the redraw
+
+    def test_copy_puts_the_geojson_on_the_clipboard(self):
+        self.page.context.grant_permissions(['clipboard-read', 'clipboard-write'])
+        self.open_trip(tab='#geojson')
+        self.page.click('#panel .output-bar button')
+        expect(self.page.locator('#panel .output-bar button')).to_have_text('Copied')
+        copied = self.page.evaluate('navigator.clipboard.readText()')
+        # Windows hands text back from the clipboard with its own line endings; the JSON is the same.
+        self.assertEqual(json.loads(copied), self.geojson())
+        self.assertEqual(json.loads(copied)['type'], 'FeatureCollection')
 
     # ---------- the settings drawer ----------
 

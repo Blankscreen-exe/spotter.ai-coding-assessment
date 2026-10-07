@@ -431,6 +431,14 @@ is visible at once.
     The third option, real alternative routes from the routing provider, I
     left out: it changes the provider, the optimiser, the cache and the
     response, for one or two alternatives on a long trip.
+17. **A GeoJSON tab, to paste into geojson.io.** I asked for an output tab in
+    the bottom drawer whose contents I can paste there. It holds the plan as
+    one FeatureCollection: the route line, its two ends and each fuel stop,
+    with a Copy button. Claude's additions: a tick box that adds the stations
+    passed over (off by default, since they turn 10 features into about 350),
+    and colour and symbol properties that geojson.io draws from, so the route
+    is blue and the stops are numbered there as they are here. It is built in
+    the page from the API's answer, so the API itself did not change.
 
 ### 3.16 Django Debug Toolbar for the reviewer
 
@@ -531,8 +539,8 @@ is visible at once.
 
 ## 5. How it is verified
 
-- 184 automated tests covering 95% of the Python lines, run on both SQLite and
-  PostgreSQL 17. Thirteen of them drive the page in a real browser; those run
+- 187 automated tests covering 95% of the Python lines, run on both SQLite and
+  PostgreSQL 17. Sixteen of them drive the page in a real browser; those run
   where a browser is installed and are skipped in the Docker image.
 - The rate limit was exercised against the running stack: with the limit then at
   60 a minute, 65 quick requests gave 60 successes and 5 refusals with a
