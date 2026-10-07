@@ -289,12 +289,32 @@ Smaller calls, all Claude defaults that I kept:
 
 | Call | Why |
 | --- | --- |
-| The sliders override one request; the stored settings stay in the admin | Letting a public page write the settings table would let anyone change it |
-| "Server settings" opens a drawer on the page (my request), read-only, fed by `GET /api/v1/settings/` | The settings are visible without leaving the page; editing still needs the admin login. For an API key it says only whether one is stored |
+| The sliders override one request only | They are for trying things; they change nothing for anyone else |
 | The sliders start from the server's current settings | So the page and the API never disagree about the defaults |
 | Rate limit raised from 60 to 120 requests a minute | The "Stops against cost" tab makes six small requests per trip, all served from cache |
 | "Planning your route" is a plain spinner | The mockup ticked off three stages on a timer, which would have been pretend progress |
 | Everything from a response is escaped before it is shown | Station names and error messages echo data and user input |
+
+Then two requests of mine about the settings:
+
+1. **"Server settings" should open a drawer on the page**, not send you to the
+   admin. Claude built it read-only, fed by a new `GET /api/v1/settings/`.
+2. **The drawer should let you edit**, without an "edit in the admin" button.
+   That makes the page able to write settings that apply to every client, so
+   Claude put conditions on it, which I kept:
+
+| Condition | Why |
+| --- | --- |
+| Saving needs a signed-in account with permission to change settings; reading stays open | Otherwise any visitor could change the routing provider for everyone |
+| Sign-in happens in the drawer and is the same session as the admin | One set of accounts, nothing new to manage |
+| Every write carries Django's CSRF token | A signed-in browser cannot be made to change settings from another site |
+| Sign-in is limited to 10 attempts a minute | Slows down password guessing |
+| All values are validated and saved together or not at all | A half-applied change could leave the planner unusable |
+| The server refuses to switch to a provider that has no API key | Every request after that would fail |
+| An API key can be stored from the drawer but is never sent back, and changes are logged with who made them, never the key | Same rule as the admin form |
+
+After a save the plan on screen is redone under the new settings, so the effect
+is visible at once.
 
 ## 4. Things testing caught
 
@@ -321,7 +341,7 @@ Smaller calls, all Claude defaults that I kept:
 
 ## 5. How it is verified
 
-- 126 automated tests covering 94% of the Python lines, run on both SQLite and PostgreSQL 17.
+- 149 automated tests covering 95% of the Python lines, run on both SQLite and PostgreSQL 17.
 - The rate limit was exercised against the running stack: with the limit then at
   60 a minute, 65 quick requests gave 60 successes and 5 refusals with a
   `Retry-After` header.

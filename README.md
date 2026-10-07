@@ -52,8 +52,10 @@ and nothing more: every plan on screen came from `POST /api/v1/route/`.
    API call behind the plan, and server details.
 
 Pointing at a stop on the map, the chart or the table highlights it in the
-others. "Server settings" opens a drawer with the server's current settings
-and a link to change them in the admin. A link such as `/map/?start=Chicago, IL&finish=Houston, TX` opens
+others. "Server settings" opens a drawer with the server's current settings.
+Signed in with an admin account you can change them there, and store an
+OpenRouteService key; the plan on screen is then redone under the new
+settings. A link such as `/map/?start=Chicago, IL&finish=Houston, TX` opens
 straight on that trip, which is what `map_url` in an API response is.
 
 ## The API
@@ -149,7 +151,21 @@ loaded, and 503 otherwise. The Docker stack uses it as the container health chec
 `GET /api/v1/settings/` returns what the server uses when a request does not
 say otherwise: each setting's value, default and description, and for each
 routing provider whether it is in use and whether an API key is stored (never
-the key itself). It is read-only; changing a setting is done in the admin.
+the key itself). Anyone may read it.
+
+`PATCH /api/v1/settings/` changes settings and stores provider keys:
+
+```json
+{"settings": {"stops.cost_per_stop": 8, "vehicle.mpg": 12}, "provider_keys": {"openrouteservice": "..."}}
+```
+
+Because settings apply to every client, this needs a signed-in account with
+permission to change them, and Django's CSRF token in an `X-CSRFToken` header.
+Every value is validated and nothing is saved unless all of it is valid; the
+server will not switch to a provider that has no key. `POST /api/v1/session/`
+with a username and password signs in (the same accounts and session as the
+admin, limited to 10 attempts a minute), and `DELETE` signs out. The route
+endpoint itself takes no credentials.
 
 A Postman collection with these requests is in
 [docs/postman_collection.json](docs/postman_collection.json).
@@ -191,8 +207,9 @@ cross-country route is about 12 ms to match stations and 30 ms to optimise.
 
 ## Configuration
 
-Runtime settings are rows in the `Setting` table, editable in the Django admin
-at `/admin/`. They take effect on the next request.
+Runtime settings are rows in the `Setting` table. Change them in the page's
+"Server settings" drawer or in the Django admin at `/admin/`; either way they
+take effect on the next request.
 
 The Docker stack creates an admin login on first start: **admin** /
 **fuelroute-demo**. For a local run, create the same one with:
@@ -223,6 +240,7 @@ The ones that matter beyond a local run:
 | `DJANGO_DEBUG`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS` | The usual Django three. The secret key is required when debug is off |
 | `DJANGO_SECURE` | `true` behind an HTTPS proxy: redirect to https, HSTS, secure cookies |
 | `API_RATE_LIMIT` | Requests per client on the route endpoint. Default `120/min`; empty disables it |
+| `LOGIN_RATE_LIMIT` | Sign-in attempts per client. Default `10/min` |
 
 ### Using OpenRouteService
 
@@ -234,8 +252,9 @@ python manage.py generate_encryption_key       # put the output in .env as CREDE
 python manage.py set_provider_key openrouteservice --activate
 ```
 
-`--activate` also makes it the default provider. The key can be entered in the
-admin instead. Note that the OpenRouteService integration is covered by tests
+`--activate` also makes it the default provider. The key can be pasted into the
+"Server settings" drawer or entered in the admin instead; all three need the
+encryption key to be set first. Note that the OpenRouteService integration is covered by tests
 with mocked responses but has not yet been run against the live API.
 
 ## Tests
@@ -245,7 +264,7 @@ python manage.py test                                  # SQLite
 docker compose exec web python manage.py test          # PostgreSQL
 ```
 
-126 tests, 94% line coverage of the Python code. The optimizer is checked against
+149 tests, 95% line coverage of the Python code. The optimizer is checked against
 brute force and an independent formula on random routes. The routing providers
 and Nominatim are mocked, so the suite makes no network calls, and it always
 uses a private cache.

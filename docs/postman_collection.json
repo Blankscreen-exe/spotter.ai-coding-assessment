@@ -103,7 +103,7 @@
       }
     },
     {
-      "name": "Server settings (read-only)",
+      "name": "Server settings",
       "request": {
         "method": "GET",
         "url": "{{base_url}}/api/v1/settings/"
