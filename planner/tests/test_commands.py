@@ -117,6 +117,8 @@ class SetProviderKeyTests(TestCase):
         self.assertFalse(ProviderCredential.objects.exists())
 
 
+# The real password hasher is deliberately slow (over a second per password); tests swap in a fast one.
+@override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
 class SeedAdminTests(TestCase):
     def run_command(self, *args, **environment):
         output = StringIO()
