@@ -483,7 +483,8 @@ is visible at once.
   inside the view, reads only about 2 ms higher with it on.
 - **What it showed straight away:** a plan is three queries taking about 2 ms
   (the settings, the start place, the finish place); a repeat of the same
-  request makes three cache calls and a new plan five. It also showed a 404 for
+  request makes three cache calls and a new plan of a known trip four (five
+  before the cache was reworked in 3.18). It also showed a 404 for
   `/favicon.ico` on every page load, so the site now has an icon.
 
 ### 3.17 A review of the code's structure, and six fixes
@@ -522,6 +523,33 @@ is visible at once.
   where they had two; and the test trip is one fixture shared by the API tests
   and the browser tests.
 
+### 3.18 Are the caching, the queries and the algorithm sound?
+
+- **What I asked:** whether the technical side holds up: caching, query times,
+  optimisations, time and space complexity. Claude measured a real New York to
+  Los Angeles plan part by part rather than quote the docs.
+- **What held:** three indexed queries per plan (about 2 ms); station matching
+  in 15 ms; the dynamic programme in 37 ms, with time growing as n × w × log w
+  and memory as n × w (n stations on the route, w within one tank of each
+  other). Doubling the trip length doubled its time and doubling the density
+  quadrupled it, on synthetic data.
+- **What did not, and what I decided about each** (Claude gave options with
+  numbers; these are my picks):
+
+| Weakness | Decision | Why |
+| --- | --- | --- |
+| Redis had no memory limit. A client at the rate limit could add about 80 MB a minute | Cap it at 256 MB and drop the least recently used entries | A cache should be allowed to forget. 256 MB holds about 2,300 cross-country trips |
+| Every cached plan repeated the route's line and station list: 109 KB each, on top of 549 KB for the route as fetched | Keep only the route made ready for planning (108 KB) and the stops per plan (1.4 KB). Drop the route as fetched | A trip with one plan goes from 658 KB to 109 KB, and each further plan from 109 KB to 1.4 KB. The price: changing the corridor setting costs each trip one new routing call |
+| Identical new requests arriving together each called the routing server | The first calls it; the others wait for its answer | Ten people asking for the same new trip now cost one call, across both workers |
+| The corridor setting had no upper limit, and the optimiser's time grows with the square of the stations in it | No wider than 25 miles | 0.16 s to choose the stops at 25 miles against over a second at 100, and past 25 a station is hard to call "on the route" |
+
+- **A side effect worth having:** a new plan of a known trip no longer matches
+  the stations again, so it dropped from about 60 ms to about 42 ms inside the
+  planner.
+- **Still true:** a routing call can wait up to 20 seconds and there are eight
+  request threads, so a hanging provider can tie the server up. I have not
+  changed that.
+
 ## 4. Things testing caught
 
 - **GET ignored a default.** Django REST framework reads a query string like an
@@ -556,11 +584,11 @@ is visible at once.
   calls for every request, including ones that plainly used the cache. The
   toolbar touches that cache before it starts watching it, and that stops the
   watching from ever being set up. Its records now go to a cache of their own,
-  and the panel shows three calls for a repeated plan and five for a new one.
+  and the panel showed three calls for a repeated plan and five for a new one.
 
 ## 5. How it is verified
 
-- 191 automated tests covering 95% of the Python lines, run on both SQLite and
+- 197 automated tests covering 95% of the Python lines, run on both SQLite and
   PostgreSQL 17. Twenty of them drive the page in a real browser; those run
   where a browser is installed and are skipped in the Docker image.
 - The rate limit was exercised against the running stack: with the limit then at

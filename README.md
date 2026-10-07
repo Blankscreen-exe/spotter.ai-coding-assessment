@@ -218,9 +218,12 @@ A Postman collection with these requests is in
    a dynamic programme over (station, fuel on arrival). With a stop cost of 0 a
    greedy look-ahead gives the cheapest possible bill. See
    `planner/services/optimizer.py`.
-5. **Cache.** The finished plan and the provider's route are cached (Redis, or
-   in-process without it), so a repeat makes no routing call and returns in
-   milliseconds.
+5. **Cache.** Two things are kept for an hour (in Redis, or in-process without
+   it): the route made ready for planning, which is its line thinned for
+   drawing plus the stations matched to it, and the stops chosen under each set
+   of settings. A repeat reads both in one round trip and makes no routing
+   call. If several requests for the same new trip arrive together, one calls
+   the provider and the rest wait for its answer.
 
 The price file has no coordinates. Each station is placed at the centre of its
 town: 6,313 from the Census file, and the 313 whose towns the Census does not
@@ -238,11 +241,41 @@ off; these vary from run to run.
 | Chicago to Houston (1,083 mi) | about 330 ms | about 10 ms |
 
 Nearly all of a first request is the routing call. Local work on a
-cross-country route is about 12 ms to match stations and 30 ms to optimise.
+cross-country route is about 15 ms to match stations and 37 ms to optimise.
 
 In the debug toolbar, a plan is three SQL queries taking about 2 ms together:
 the settings, and one indexed lookup each for the start and the finish. The
 stations are matched in memory, so they cost no query.
+
+### Complexity and limits
+
+Measured on New York to Los Angeles: 2,810 miles, 349 stations within 5 miles
+of the route, at most 140 of them within one tank of each other.
+
+| Step | Time | Memory | Measured |
+| --- | --- | --- | --- |
+| Match stations to the route | stations near the route × route miles | the same, for a moment | 15 ms, 18 MB |
+| Choose stops, no stop cost (greedy) | n × w | n | 0.2 ms |
+| Choose stops, with a stop cost (dynamic programme) | n × w × log w | n × w | 37 ms |
+
+n is the number of stations on the route and w the number within one tank of
+each other. On synthetic data, doubling the trip length doubled the dynamic
+programme's time, and doubling the station density quadrupled it, as that
+predicts.
+
+What bounds it:
+
+- **Stations per route.** The corridor setting cannot be raised past 25 miles.
+  At 5 miles choosing the stops takes 0.04 s; at 25, 0.16 s; at 100 it would be
+  over a second.
+- **Cache size.** A trip occupies about 110 KB for its route and 1 to 2 KB per
+  plan. The compose stack caps Redis at 256 MB and lets it drop its least
+  recently used entries, so it cannot grow without limit. A lost entry costs one
+  routing call, nothing else.
+- **Routing calls.** One for a new trip, none for a repeat, and one in total for
+  a burst of identical new requests. Changing the corridor setting costs each
+  trip one more call, because the route as fetched is not kept.
+- **Requests.** 120 a minute per client on the route endpoint.
 
 ## Configuration
 
@@ -266,7 +299,7 @@ compose file reads the same two variables.
 | --- | --- | --- |
 | `routing.provider` | `osrm` | `osrm` or `openrouteservice` |
 | `stops.cost_per_stop` | `5` | Dollars one extra stop is worth avoiding |
-| `stations.corridor_miles` | `5` | How far from the route a station may be |
+| `stations.corridor_miles` | `5` | How far from the route a station may be (25 at most) |
 | `vehicle.range_miles` | `500` | Distance on a full tank |
 | `vehicle.mpg` | `10` | Fuel economy |
 
@@ -305,7 +338,7 @@ python manage.py test                                  # SQLite
 docker compose exec web python manage.py test          # PostgreSQL
 ```
 
-191 tests, 95% line coverage of the Python code. The optimizer is checked against
+197 tests, 95% line coverage of the Python code. The optimizer is checked against
 brute force and an independent formula on random routes. The routing providers
 and Nominatim are mocked, and the suite always uses a private cache.
 

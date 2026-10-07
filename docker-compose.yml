@@ -24,6 +24,10 @@ services:
 
   cache:
     image: redis:7-alpine
+    # A cache, so it gets a ceiling and gives up its least recently used entries
+    # when it reaches it. Without one it would grow until the host ran out of
+    # memory: a cross-country route is about 110 KB and lives for an hour.
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 3s
