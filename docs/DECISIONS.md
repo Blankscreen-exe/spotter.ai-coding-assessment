@@ -250,7 +250,8 @@ One option was measured and rejected: OSRM's "simplified" route comes back in
 - **The question I raised:** what would make this look production-ready without
   over-engineering it?
 - **Decided by me, from four options Claude offered:** API hardening, frontend
-  fixes and filling the test gaps. I left out the fourth, a CI workflow.
+  fixes and filling the test gaps. I left out the fourth, a CI workflow, at
+  this point; it came in later with the linter (3.17).
 
 | Added | Why |
 | --- | --- |
@@ -456,6 +457,42 @@ is visible at once.
   request makes three cache calls and a new plan five. It also showed a 404 for
   `/favicon.ico` on every page load, so the site now has an icon.
 
+### 3.17 A review of the code's structure, and six fixes
+
+- **What I asked:** whether the code is modular, readable, maintainable and
+  good Django. Claude re-read it and ran checks rather than answer from memory.
+  The verdict was "mostly, on the Python side", with six shortfalls. I asked
+  for all six to be fixed, and for reusability to be kept in mind.
+
+| Shortfall | What was done |
+| --- | --- |
+| The settings endpoint was 58 lines of permission checks, validation and writes inside the view | A permission class says who may write, a serializer says what a change may contain, and `services/server_settings.py` reads and writes the tables. The view is a few lines |
+| Signing in reached into a private attribute of the request and called the CSRF check by hand | An authentication class checks the token on every writing request, signed in or not |
+| The planner built the API's JSON itself, rounding and key names included | `plan_trip()` returns typed objects (`Trip`, `TripPlan`, `FuelStop`, `Station`) and serializers turn them into JSON |
+| Nothing enforced style | A ruff configuration, the code formatted with it, and a CI workflow that runs it with the tests |
+| Eight tests matched the text of the CSS and JavaScript | Thirteen tests drive the page in a real browser instead |
+| A module-level HTTP session, a global station index behind a lock, an import inside a function, leftover `startproject` comments | Each provider owns its session, the index is a cached loader, `conf.py` holds definitions only, and the comments describe this project |
+
+- **Checked, because a refactor proves nothing by itself:** eight API requests
+  compared field by field between the code before and after came out
+  identical, key order included. Response times are what they were (a repeated
+  plan with the station list: 27 ms before and after, on a local run). Each of
+  three deliberate breakages of the page was caught by the new browser tests.
+- **One visible change:** a visitor who sends POST, PUT or DELETE to the
+  settings is told to sign in (401) instead of that the method does not exist
+  (405). That is the order REST framework checks in, and I kept it.
+- **A cost that had to be undone:** declared field by field, the serializer for
+  the station list added about 8 ms to every request that asks for it, since
+  there can be several hundred stations. It now writes each one out directly.
+- **CI after all:** in 3.14 I left a CI workflow out. Enforcing the linter needs
+  something to run it, so there is one now. It has not run yet: it will on the
+  first push that includes it.
+- **What this bought in reuse:** the planner can be called from a command, a
+  report or another API version and returns the same objects; the
+  `set_provider_key` command and the API store a key through one function
+  where they had two; and the test trip is one fixture shared by the API tests
+  and the browser tests.
+
 ## 4. Things testing caught
 
 - **GET ignored a default.** Django REST framework reads a query string like an
@@ -494,13 +531,17 @@ is visible at once.
 
 ## 5. How it is verified
 
-- 171 automated tests covering 95% of the Python lines, run on both SQLite and PostgreSQL 17.
+- 184 automated tests covering 95% of the Python lines, run on both SQLite and
+  PostgreSQL 17. Thirteen of them drive the page in a real browser; those run
+  where a browser is installed and are skipped in the Docker image.
 - The rate limit was exercised against the running stack: with the limit then at
   60 a minute, 65 quick requests gave 60 successes and 5 refusals with a
   `Retry-After` header.
-- The page was driven in a headless browser against the live API: example and
-  typed trips, both counters, every tab, the error messages, a script-injection
-  attempt typed into the dialog, direct links, and desktop and narrow widths.
+- Before those browser tests existed, the page was driven by hand-written
+  scripts in a headless browser against the live API after each change:
+  example and typed trips, both counters, every tab, the error messages, a
+  script-injection attempt typed into the dialog, direct links, and desktop and
+  narrow widths.
 - The Docker stack was rebuilt from an empty volume and exercised with real
   requests.
 - Routes were planned against the live OSRM server throughout.
@@ -514,7 +555,7 @@ is visible at once.
 - The public OSRM server has no uptime guarantee and routes for cars, not trucks.
 - The station index is loaded once per server process, so workers need a
   restart after a re-import. Cached plans live for an hour.
-- There is no authentication; the brief did not ask for it. There is no CI
-  workflow yet either.
-- The page's JavaScript has no automated tests; it was checked by
-  driving it in a headless browser (section 5).
+- There is no authentication on the route endpoint; the brief did not ask for
+  it. The CI workflow has not run yet (3.17).
+- The page's script is tested through the browser only. It is one 930-line
+  file, and its functions have no unit tests of their own.

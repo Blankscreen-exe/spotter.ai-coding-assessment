@@ -299,10 +299,25 @@ python manage.py test                                  # SQLite
 docker compose exec web python manage.py test          # PostgreSQL
 ```
 
-171 tests, 95% line coverage of the Python code. The optimizer is checked against
+184 tests, 95% line coverage of the Python code. The optimizer is checked against
 brute force and an independent formula on random routes. The routing providers
-and Nominatim are mocked, so the suite makes no network calls, and it always
-uses a private cache.
+and Nominatim are mocked, and the suite always uses a private cache.
+
+Thirteen of the tests drive the map page in a real browser (the dialog, the
+drawers, the counters, the map, and text that tries to be markup). They need the
+development requirements and a Chrome or Edge that is already installed, and
+they are skipped without them, as in the Docker image:
+
+```bash
+pip install -r requirements-dev.txt
+ruff check . && ruff format --check .                  # linter and formatter
+python manage.py test                                  # now includes the browser tests
+```
+
+Those thirteen need the network, because the page loads Leaflet from a CDN; the
+rest of the suite makes no network calls. A GitHub Actions workflow
+(`.github/workflows/ci.yml`) runs the linter, the tests on SQLite with the
+browser tests, and the tests on PostgreSQL.
 
 ## Limitations
 
@@ -313,8 +328,8 @@ uses a private cache.
 - Canadian stations in the price file are ignored.
 - The station index is loaded once per server process; restart the server after
   re-importing data.
-- The page's JavaScript has no automated tests. It was checked by driving the
-  running page in a headless browser.
+- The page's script is tested through the browser only. It is one file, and its
+  functions have no unit tests of their own.
 
 ## Data sources
 
@@ -330,24 +345,31 @@ uses a private cache.
 ## Layout
 
 ```
-config/                    Django project (settings, urls, wsgi)
+config/                    Django project (settings, urls, wsgi, the debug toolbar's switch)
 planner/
   models.py                Place, FuelStation, Setting, ProviderCredential
-  conf.py                  runtime settings: keys, defaults, validation
+  conf.py                  which runtime settings exist: keys, defaults, validation
   crypto.py                encrypted model field for API keys
   providers/               OSRM and OpenRouteService clients, polyline decoder
-  services/
+  services/                the work itself, with no knowledge of HTTP or JSON
     places.py              offline "City, ST" lookup
     stations.py            in-memory station index, route matching
     optimizer.py           fuel stop selection
-    trip.py                puts the pieces together, caching
+    trip.py                plans a trip from those pieces, with caching; returns typed objects
+    server_settings.py     reads and changes the runtime settings and provider keys
+  views.py                 thin: the API endpoints, the map page, the health check
+  serializers.py           what the API accepts and the JSON it returns
+  permissions.py           who may change the server settings
+  authentication.py        session sign-in that always checks the CSRF token
+  handlers.py              one JSON shape for every API error
+  throttling.py            per-client rate limits
   management/commands/     data import, credential management
-  views.py, serializers.py API, map page, health check
   author.py                the note and links in the page's About drawer
   templates/, static/      the map page: markup, styles, and the script that calls the API
-  handlers.py              one JSON shape for every API error
-  throttling.py            per-client rate limit
   warmup.py                work done once at server start
+  tests/                   API, services, commands, and the page in a browser
 data/                      price file, Census Gazetteer, Nominatim cache
 docs/                      brief, decision log, Postman collection
+pyproject.toml             linter and formatter settings
+requirements-dev.txt       linter, coverage and browser-test tooling
 ```
