@@ -1,10 +1,16 @@
+import json
+import os
+import subprocess
+import sys
 from unittest import mock
 
+from django.conf import settings
 from django.core.cache import cache
 from django.db import DatabaseError
-from django.test import TestCase, override_settings
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
+from config.toolbar import show_toolbar
 from planner import views
 from planner.models import FuelStation, Place
 from planner.services.stations import reset_index
@@ -107,6 +113,65 @@ class HealthTests(TestCase):
     def test_not_redirected_to_https(self):
         self.assertEqual(self.client.get(self.url).status_code, 503)
         self.assertEqual(self.client.get(reverse('route-map')).status_code, 301)
+
+
+class DebugToolbarTests(SimpleTestCase):
+    """The toolbar shows the inside of the server, so the switch for it has to be dependable."""
+
+    TOOLBAR = 'debug_toolbar.middleware.DebugToolbarMiddleware'
+
+    def settings_under(self, **environment):
+        """The settings as a server started with this environment would load them."""
+        program = (
+            'import json, django; from django.conf import settings; django.setup(); '
+            'print(json.dumps({"apps": settings.INSTALLED_APPS, "middleware": settings.MIDDLEWARE, '
+            '"config": getattr(settings, "DEBUG_TOOLBAR_CONFIG", {}), "caches": sorted(settings.CACHES)}))'
+        )
+        return subprocess.run(
+            [sys.executable, '-c', program], capture_output=True, text=True, cwd=settings.BASE_DIR,
+            env={**os.environ, 'DJANGO_SETTINGS_MODULE': 'config.settings',
+                 'DJANGO_DEBUG_TOOLBAR': '', 'DJANGO_SECURE': '', 'REDIS_URL': '', **environment},
+        )
+
+    def test_off_unless_asked_for(self):
+        loaded = json.loads(self.settings_under().stdout)
+        self.assertNotIn('debug_toolbar', loaded['apps'])
+        self.assertNotIn(self.TOOLBAR, loaded['middleware'])
+
+    def test_never_loaded_for_the_test_suite(self):
+        # True even when the environment asks for it, as the docker compose stack does.
+        self.assertFalse(settings.DEBUG_TOOLBAR)
+        self.assertNotIn('debug_toolbar', settings.INSTALLED_APPS)
+        self.assertEqual(self.client.get('/__debug__/render_panel/').status_code, 404)
+
+    def test_switched_on_it_sits_straight_after_gzip(self):
+        loaded = json.loads(self.settings_under(DJANGO_DEBUG_TOOLBAR='true').stdout)
+        self.assertIn('debug_toolbar', loaded['apps'])
+        # It has to add itself to a page before the page is compressed.
+        gzip = loaded['middleware'].index('django.middleware.gzip.GZipMiddleware')
+        self.assertEqual(loaded['middleware'].index(self.TOOLBAR), gzip + 1)
+        self.assertEqual(loaded['config']['SHOW_TOOLBAR_CALLBACK'], 'config.toolbar.show_toolbar')
+        self.assertNotIn('TOOLBAR_STORE_CLASS', loaded['config'])  # one process: its memory will do
+
+    def test_with_redis_its_records_go_to_a_cache_of_their_own(self):
+        # Shared, so either worker can show a request the other served; separate from the
+        # application's cache, or the Cache panel records none of the application's calls.
+        loaded = json.loads(self.settings_under(DJANGO_DEBUG_TOOLBAR='true', REDIS_URL='redis://cache:6379/0').stdout)
+        self.assertEqual(loaded['caches'], ['default', 'toolbar'])
+        self.assertEqual(loaded['config']['TOOLBAR_STORE_CLASS'], 'debug_toolbar.store.CacheStore')
+        self.assertEqual(loaded['config']['CACHE_BACKEND'], 'toolbar')
+
+    def test_refused_on_a_secured_deployment(self):
+        refused = self.settings_under(DJANGO_DEBUG_TOOLBAR='true', DJANGO_SECURE='true')
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn('DJANGO_DEBUG_TOOLBAR must not be set', refused.stderr)
+
+    def test_health_checks_are_kept_out_of_its_history(self):
+        # The container checks itself every ten seconds; those would push out the requests worth reading.
+        requests = RequestFactory()
+        self.assertFalse(show_toolbar(requests.get(reverse('health'))))
+        self.assertTrue(show_toolbar(requests.get(reverse('route-map'))))
+        self.assertTrue(show_toolbar(requests.post(reverse('route-plan'))))
 
 
 class FaviconTests(TestCase):

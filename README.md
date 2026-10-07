@@ -21,6 +21,17 @@ docker compose up --build
 The first start runs the migrations and loads the reference data, which takes a
 few seconds. Then open http://localhost:8000/.
 
+This stack starts with [Django Debug Toolbar](https://django-debug-toolbar.readthedocs.io/)
+switched on: the green tab on the right edge of every page. Click it to see the
+SQL queries, cache calls and timing behind a request. On the map page it
+follows the API calls the page makes, so after planning a trip the panels
+describe that call, and its History panel lists every request with a Switch
+button. The toolbar adds roughly 25 to 30 ms to each request. To run without it:
+
+```bash
+DJANGO_DEBUG_TOOLBAR=false docker compose up     # or put that line in .env
+```
+
 ### Without Docker (SQLite)
 
 Developed and tested on Python 3.14. Django 6.1 needs 3.12 or newer.
@@ -36,7 +47,7 @@ python manage.py runserver
 ```
 
 No environment variables are needed for this path. `.env.example` lists the
-optional ones.
+optional ones; `DJANGO_DEBUG_TOOLBAR=true` gives this run the same toolbar.
 
 ## The page
 
@@ -201,7 +212,8 @@ list from a one-off Nominatim lookup whose results are committed in
 
 ### Performance
 
-Measured on a laptop against the public OSRM server; these vary from run to run.
+Measured on a laptop against the public OSRM server, with the debug toolbar
+off; these vary from run to run.
 
 | | First request | Repeat |
 | --- | --- | --- |
@@ -210,6 +222,10 @@ Measured on a laptop against the public OSRM server; these vary from run to run.
 
 Nearly all of a first request is the routing call. Local work on a
 cross-country route is about 12 ms to match stations and 30 ms to optimise.
+
+In the debug toolbar, a plan is three SQL queries taking about 2 ms together:
+the settings, and one indexed lookup each for the start and the finish. The
+stations are matched in memory, so they cost no query.
 
 ## Configuration
 
@@ -245,6 +261,7 @@ The ones that matter beyond a local run:
 | `DATABASE_URL`, `REDIS_URL` | PostgreSQL and Redis. Unset means SQLite and an in-process cache |
 | `DJANGO_DEBUG`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS` | The usual Django three. The secret key is required when debug is off |
 | `DJANGO_SECURE` | `true` behind an HTTPS proxy: redirect to https, HSTS, secure cookies |
+| `DJANGO_DEBUG_TOOLBAR` | `true` puts Django Debug Toolbar on every page, for every visitor. For a local stack only: the server refuses to start with it and `DJANGO_SECURE` together |
 | `API_RATE_LIMIT` | Requests per client on the route endpoint. Default `120/min`; empty disables it |
 | `LOGIN_RATE_LIMIT` | Sign-in attempts per client. Default `10/min` |
 
@@ -271,7 +288,7 @@ python manage.py test                                  # SQLite
 docker compose exec web python manage.py test          # PostgreSQL
 ```
 
-162 tests, 95% line coverage of the Python code. The optimizer is checked against
+171 tests, 95% line coverage of the Python code. The optimizer is checked against
 brute force and an independent formula on random routes. The routing providers
 and Nominatim are mocked, so the suite makes no network calls, and it always
 uses a private cache.

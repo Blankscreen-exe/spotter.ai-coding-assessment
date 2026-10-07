@@ -198,6 +198,49 @@ else:
     }
 
 
+# Django Debug Toolbar: the SQL, cache calls and timing behind every request,
+# including the API calls the map page makes (its History panel lists them).
+# It shows the inside of the server to whoever can reach it, so it is opt-in:
+# the local docker compose stack turns it on and nothing else should. It is
+# never loaded for the test suite.
+DEBUG_TOOLBAR = (
+    os.environ.get('DJANGO_DEBUG_TOOLBAR', '').lower() in ('1', 'true', 'yes') and sys.argv[1:2] != ['test']
+)
+if DEBUG_TOOLBAR:
+    if os.environ.get('DJANGO_SECURE', '').lower() in ('1', 'true', 'yes'):
+        raise ImproperlyConfigured('DJANGO_DEBUG_TOOLBAR must not be set on a deployment (DJANGO_SECURE is on).')
+    INSTALLED_APPS.append('debug_toolbar')
+    # After GZip, so the toolbar is added to a page before the page is compressed.
+    MIDDLEWARE.insert(
+        MIDDLEWARE.index('django.middleware.gzip.GZipMiddleware') + 1,
+        'debug_toolbar.middleware.DebugToolbarMiddleware',
+    )
+    # The panels that say something about this service. Each one costs a little
+    # on every request, so the rest (versions, signals, static files, tasks...)
+    # are left out.
+    DEBUG_TOOLBAR_PANELS = [
+        'debug_toolbar.panels.history.HistoryPanel',
+        'debug_toolbar.panels.timer.TimerPanel',
+        'debug_toolbar.panels.sql.SQLPanel',
+        'debug_toolbar.panels.cache.CachePanel',
+        'debug_toolbar.panels.request.RequestPanel',
+        'debug_toolbar.panels.headers.HeadersPanel',
+    ]
+    DEBUG_TOOLBAR_CONFIG = {
+        'SHOW_TOOLBAR_CALLBACK': 'config.toolbar.show_toolbar',
+        'SHOW_COLLAPSED': True,   # a small handle on the edge of the page until it is clicked
+        'UPDATE_ON_FETCH': True,  # follow the page's API calls, so the panels describe the plan on screen
+        'RESULTS_CACHE_SIZE': 50,
+    }
+    if os.environ.get('REDIS_URL'):
+        # With Redis, what the toolbar records is kept there, so that either
+        # gunicorn worker can show a request the other one served. It gets a
+        # cache of its own: when it shares the application's, the Cache panel
+        # never sees the application's own cache calls.
+        CACHES['toolbar'] = {**CACHES['default'], 'KEY_PREFIX': 'djdt'}
+        DEBUG_TOOLBAR_CONFIG.update(TOOLBAR_STORE_CLASS='debug_toolbar.store.CacheStore', CACHE_BACKEND='toolbar')
+
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,

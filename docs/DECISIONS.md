@@ -410,6 +410,31 @@ is visible at once.
     trips we measured, plans stop changing somewhere between $6 and $20, so
     the upper part of the counter is realistic but uneventful.
 
+### 3.16 Django Debug Toolbar for the reviewer
+
+- **What I asked for:** Django Debug Toolbar, so that a reviewer can see the
+  queries and timing behind any request without reading the code first.
+- **How it is set up (Claude's calls):**
+
+| Call | Why |
+| --- | --- |
+| On by default in the docker compose stack, off everywhere else | The compose stack is the one a reviewer runs. Anywhere else it must be asked for with `DJANGO_DEBUG_TOOLBAR` |
+| It has its own switch and does not depend on `DEBUG` | The compose stack runs with `DEBUG` off, as a deployment would, and I did not want to turn that on just for this |
+| The server refuses to start with it and `DJANGO_SECURE` together | It shows SQL, headers and cache calls to every visitor, so it must not reach a real deployment by accident |
+| Six panels: History, Time, SQL, Cache, Request, Headers | Every panel costs time on every request. With all of them it added about 50 ms; with these six, 25 to 30 ms |
+| It follows the page's API calls | The map page is only a client of the API, so the interesting queries are behind its fetches, not behind the page itself |
+| What it records is kept in Redis, in a cache of its own | There are two gunicorn workers, and either must be able to show a request the other served |
+| The container's health check is left out | It runs every ten seconds and would fill the history |
+
+- **What it cost:** 25 to 30 ms on every request while it is on. The timings in
+  the README are with it off. Most of that is the toolbar's own bookkeeping
+  after the answer is ready: the page's "answered in N ms" line, which is timed
+  inside the view, reads only about 2 ms higher with it on.
+- **What it showed straight away:** a plan is three queries taking about 2 ms
+  (the settings, the start place, the finish place); a repeat of the same
+  request makes three cache calls and a new plan five. It also showed a 404 for
+  `/favicon.ico` on every page load, so the site now has an icon.
+
 ## 4. Things testing caught
 
 - **GET ignored a default.** Django REST framework reads a query string like an
@@ -439,10 +464,16 @@ is visible at once.
 - **The tests were clearing the live cache.** Run inside the container they
   used the real Redis, and several tests empty the cache. The test run now
   always gets a private in-process cache.
+- **The debug toolbar's Cache panel showed nothing.** With the toolbar keeping
+  its records in the application's own cache, the panel reported zero cache
+  calls for every request, including ones that plainly used the cache. The
+  toolbar touches that cache before it starts watching it, and that stops the
+  watching from ever being set up. Its records now go to a cache of their own,
+  and the panel shows three calls for a repeated plan and five for a new one.
 
 ## 5. How it is verified
 
-- 162 automated tests covering 95% of the Python lines, run on both SQLite and PostgreSQL 17.
+- 171 automated tests covering 95% of the Python lines, run on both SQLite and PostgreSQL 17.
 - The rate limit was exercised against the running stack: with the limit then at
   60 a minute, 65 quick requests gave 60 successes and 5 refusals with a
   `Retry-After` header.

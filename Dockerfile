@@ -8,7 +8,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-RUN python manage.py collectstatic --noinput     && useradd --system --create-home app
+# Collected with the debug toolbar switched on, so that its files are in the
+# image whether or not the container is later started with it.
+RUN DJANGO_DEBUG_TOOLBAR=true python manage.py collectstatic --noinput     && useradd --system --create-home app
 USER app
 
 EXPOSE 8000

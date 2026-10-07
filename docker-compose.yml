@@ -41,6 +41,10 @@ services:
       DJANGO_DEBUG: "false"
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-local-compose-stack-only}
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      # Django Debug Toolbar on every page of this local stack: SQL, cache calls
+      # and timing for each request. DJANGO_DEBUG_TOOLBAR=false docker compose up
+      # runs the stack without it.
+      DJANGO_DEBUG_TOOLBAR: ${DJANGO_DEBUG_TOOLBAR:-true}
       # Login for http://localhost:8000/admin/ on this local stack.
       DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-admin}
       DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:-fuelroute-demo}
