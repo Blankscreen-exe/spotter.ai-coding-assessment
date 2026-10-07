@@ -21,7 +21,7 @@ AUTHOR = {
             'If something still gets in your way, I would LOVE to hear about it. The reasoning behind '
             'each choice is in the `decision log` below.',
         ],
-        'signoff': 'Hammad',
+        'signoff': 'I\'m Hammad by the way.',
     },
     'links': [
         {'kind': 'github', 'label': 'GitHub', 'url': 'https://github.com/Blankscreen-exe'},
