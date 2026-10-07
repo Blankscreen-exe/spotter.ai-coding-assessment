@@ -134,7 +134,8 @@ def _cheapest_with_stop_cost(stations, trip_miles, range_miles, mpg, start_range
     fill-or-arrive-empty rule the vehicle can only arrive at a stop empty or
     with (range - distance from the previous stop), so there are few states.
 
-    Two observations keep it linear in (stations x stations within one tank):
+    Two observations keep the work at a station to one pass over the stations
+    within a tank of it, after sorting the ways of arriving there:
     - Topping up at a station costs its own price, so arriving with less fuel
       for proportionally less money is never worse. Arrivals are therefore
       reduced to a frontier ordered by fuel on which "value" (cost minus the

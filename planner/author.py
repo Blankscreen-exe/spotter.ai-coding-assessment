@@ -32,7 +32,6 @@ AUTHOR = {
         'label': 'Source code for this project',
         'url': 'https://github.com/Blankscreen-exe/spotter.ai-coding-assessment',
     },
-    # Works once the work is merged to main and pushed.
     'decisions': {
         'label': 'Decision log: why it is built this way',
         'url': 'https://github.com/Blankscreen-exe/spotter.ai-coding-assessment/blob/main/docs/DECISIONS.md',

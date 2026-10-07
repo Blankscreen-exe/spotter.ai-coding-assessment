@@ -860,7 +860,7 @@
         placeholder="${provider.has_key ? 'Paste a new key to replace the stored one' : 'Paste the API key'}">
       ${keyPage ? `<a class="getkey" href="${esc(keyPage)}" target="_blank" rel="noopener noreferrer">${provider.has_key ? 'Get another key' : 'No key yet? Get a free one'} from ${esc(providerName)} &#8599;</a>` : ''}
       <p class="note">${provider.has_key ? 'Leave this empty to keep the stored key.' : 'Needed before the server can switch to this provider.'}
-        It is stored encrypted and never shown again.</p>
+        It is stored encrypted, and this page never shows it again.</p>
       <div class="problem" data-problem="provider_keys.${esc(provider.name)}"></div>`;
   }
 

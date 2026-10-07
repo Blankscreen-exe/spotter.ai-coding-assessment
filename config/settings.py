@@ -20,7 +20,6 @@ from dotenv import load_dotenv
 # antivirus can still reach the routing APIs with verification left on.
 truststore.inject_into_ssl()
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / '.env')
