@@ -439,6 +439,19 @@ is visible at once.
     and colour and symbol properties that geojson.io draws from, so the route
     is blue and the stops are numbered there as they are here. It is built in
     the page from the API's answer, so the API itself did not change.
+18. **Draw the stops on the route.** I noticed that the stops marked on the
+    map do not touch the route line. The cause is the data: the price file
+    gives a station's town and an address like "I-80 Exit 223" but no
+    coordinates, so each station sits at its town's centre, up to five miles
+    from the road (1.6 miles is typical). Claude offered three remedies:
+    draw each station at the nearest point of the route, geocode 6,626 exit
+    addresses, or route through the stops with a second routing call. I chose
+    the first. It is the honest one for stations that are at exits on the
+    route anyway, it costs no request, and it changes nothing in the plan.
+    Stops, the orange dots and the rings all move, so a station does not jump
+    when it becomes a stop, and the GeoJSON tab uses the same positions. The
+    API still reports the town centre and `miles_off_route`, and a stop's
+    pop-up says how far away its town is.
 
 ### 3.16 Django Debug Toolbar for the reviewer
 
@@ -539,8 +552,8 @@ is visible at once.
 
 ## 5. How it is verified
 
-- 187 automated tests covering 95% of the Python lines, run on both SQLite and
-  PostgreSQL 17. Sixteen of them drive the page in a real browser; those run
+- 190 automated tests covering 95% of the Python lines, run on both SQLite and
+  PostgreSQL 17. Nineteen of them drive the page in a real browser; those run
   where a browser is installed and are skipped in the Docker image.
 - The rate limit was exercised against the running stack: with the limit then at
   60 a minute, 65 quick requests gave 60 successes and 5 refusals with a

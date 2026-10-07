@@ -21,11 +21,15 @@ ROAD_MILES = 20 * MILES_PER_DEGREE_LON_AT_40N
 STATIONS = [('Wayne', -97.0, '3.50'), ('Brook', -93.0, '3.00'), ('Carmel', -88.0, '3.20'), ('Dover', -84.0, '2.90')]
 
 
-def create_trip_data(station_name='{town} Truck Stop'):
-    """The two towns and the stations. One more station has no position and must never be offered."""
+def create_trip_data(station_name='{town} Truck Stop', station_lat=40.0):
+    """The two towns and the stations. One more station has no position and must never be offered.
 
-    def place(name, state, lon):
-        return Place.objects.create(name=name, state=state, key=normalize(name), lat=40.0, lon=lon)
+    The road runs along latitude 40, so station_lat says how far the stations' towns are from it:
+    40.0 puts them on the road, 40.07 just under five miles to the north.
+    """
+
+    def place(name, state, lon, lat=40.0):
+        return Place.objects.create(name=name, state=state, key=normalize(name), lat=lat, lon=lon)
 
     place('Alpha', 'KS', -100.0)
     place('Omega', 'OH', -80.0)
@@ -37,7 +41,7 @@ def create_trip_data(station_name='{town} Truck Stop'):
             city=town,
             state='KS',
             price=price,
-            place=place(town, 'KS', lon),
+            place=place(town, 'KS', lon, station_lat),
         )
     FuelStation.objects.create(
         opis_id=99, name='Nowhere Fuel', address='?', city='Nowhere', state='KS', price='1.00', place=None

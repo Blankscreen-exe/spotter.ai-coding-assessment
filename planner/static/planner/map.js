@@ -128,6 +128,45 @@
     return box;
   }
 
+  // Where a station is drawn. The price file gives a station's town, not its position, so the data places it
+  // at the centre of that town, which can be a few miles from the road. The stations themselves are at exits
+  // on the route, so each is drawn at the point of the route nearest its town. Only the drawing moves: the
+  // API's own numbers, miles_off_route among them, are untouched.
+  let snappedTo = '';          // which route the answers below belong to
+  const snapped = new Map();   // "lat,lon" of a town -> [lat, lon] on that route
+  function onRoute(body, place) {
+    const line = body.route ? body.route.geometry.coordinates : [];
+    if (line.length < 2) return [place.lat, place.lon];
+    const route = [line.length, line[0], line[line.length >> 1], line[line.length - 1]].join('|');
+    if (route !== snappedTo) {
+      snappedTo = route;
+      snapped.clear();
+    }
+    const town = `${place.lat},${place.lon}`;
+    if (!snapped.has(town)) snapped.set(town, nearestOn(line, place.lat, place.lon));
+    return snapped.get(town);
+  }
+
+  // The point of a line ([[lon, lat], ...]) nearest to a place. Distances are judged on a flat sheet scaled
+  // for the place's latitude, which is exact enough over the few miles involved.
+  function nearestOn(line, lat, lon) {
+    const squash = Math.cos(lat * Math.PI / 180);
+    let least = Infinity, nearest = [lat, lon];
+    for (let i = 1; i < line.length; i++) {
+      // Both ends of this stretch, measured from the place.
+      const ax = (line[i - 1][0] - lon) * squash, ay = line[i - 1][1] - lat;
+      const dx = (line[i][0] - lon) * squash - ax, dy = line[i][1] - lat - ay;
+      const length = dx * dx + dy * dy;
+      const along = length ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / length)) : 0;
+      const x = ax + along * dx, y = ay + along * dy;
+      if (x * x + y * y < least) {
+        least = x * x + y * y;
+        nearest = [lat + y, lon + x / squash];
+      }
+    }
+    return nearest;
+  }
+
   function drawTrip(body) {
     tripLayer.clearLayers();
     const line = L.geoJSON(body.route, { style: { color: '#1d4ed8', weight: 4 } }).addTo(tripLayer);
@@ -147,7 +186,7 @@
     }
     passedOver = [...towns.values()].map((stations) => {
       const [first] = stations.sort((a, b) => a.price_per_gallon - b.price_per_gallon);
-      return L.circleMarker([first.lat, first.lon], { renderer: dots, radius: dotSize(), weight: 1, color: '#fff', fillColor: '#f97316', fillOpacity: 0.95 })
+      return L.circleMarker(onRoute(body, first), { renderer: dots, radius: dotSize(), weight: 1, color: '#fff', fillColor: '#f97316', fillOpacity: 0.95 })
         .bindTooltip(() => popup(`${first.city}, ${first.state}`, [
           `Mile ${Math.round(first.mile_marker)}. Considered, not chosen:`,
           ...stations.slice(0, 5).map((station) => `${station.name}, $${station.price_per_gallon.toFixed(3)} a gallon`),
@@ -156,10 +195,11 @@
     });
     for (const stop of body.fuel_stops) {
       const order = Number(stop.order);
-      pin(stop.lat, stop.lon, `<div class="pin" data-order="${order}" data-station="${Number(stop.station_id)}" style="width:28px;height:28px">${order}</div>`, 28)
+      pin(...onRoute(body, stop), `<div class="pin" data-order="${order}" data-station="${Number(stop.station_id)}" style="width:28px;height:28px">${order}</div>`, 28)
         .bindPopup(popup(`${order}. ${stop.name}`, [
           `${stop.city}, ${stop.state}, mile ${Math.round(stop.mile_marker)}`,
           `${stop.gallons_purchased.toFixed(1)} gal at $${stop.price_per_gallon.toFixed(3)} = ${money(stop.cost)}`,
+          ...(stop.miles_off_route >= 0.1 ? [`Drawn where the route passes it. The town's centre is ${stop.miles_off_route} mi away.`] : []),
         ])).addTo(tripLayer);
     }
     routeBounds = line.getBounds();
@@ -200,7 +240,7 @@
       }
     }
     for (const { stop, costs } of others.values()) {
-      pin(stop.lat, stop.lon, `<div class="ghost" data-station="${Number(stop.station_id)}"></div>`, 16)
+      pin(...onRoute(current.body, stop), `<div class="ghost" data-station="${Number(stop.station_id)}"></div>`, 16)
         .bindTooltip(popup(stop.name, [
           `${stop.city}, ${stop.state}, mile ${Math.round(stop.mile_marker)}`,
           `$${stop.price_per_gallon.toFixed(3)} a gallon. A stop when one costs ${costs.join(' or ')}.`,
@@ -284,8 +324,16 @@
     const point = (place, properties) => ({
       type: 'Feature', properties, geometry: { type: 'Point', coordinates: [place.lon, place.lat] },
     });
+    // A station goes where the map draws it, on the route, so that it sits on the line elsewhere too.
+    // Where the data has it, and how far that is from the route, go along as properties.
+    const station = (place, properties) => {
+      const [lat, lon] = onRoute(body, place);
+      return point({ lat: Number(lat.toFixed(5)), lon: Number(lon.toFixed(5)) }, {
+        ...properties, miles_off_route: place.miles_off_route, town_centre: [place.lon, place.lat],
+      });
+    };
     const chosen = new Set(body.fuel_stops.map((stop) => stop.station_id));
-    const passedOver = withPassedOver ? (body.candidate_stations || []).filter((station) => !chosen.has(station.station_id)) : [];
+    const passedOver = withPassedOver ? (body.candidate_stations || []).filter((other) => !chosen.has(other.station_id)) : [];
     return {
       type: 'FeatureCollection',
       features: [
@@ -303,7 +351,7 @@
           geometry: body.route.geometry,
         },
         point(body.start, { role: 'start', name: body.start.name, 'marker-color': '#15803d' }),
-        ...body.fuel_stops.map((stop) => point(stop, {
+        ...body.fuel_stops.map((stop) => station(stop, {
           role: 'fuel stop',
           order: stop.order,
           name: stop.name,
@@ -318,13 +366,13 @@
           ...(stop.order <= 9 ? { 'marker-symbol': String(stop.order) } : {}),  // the symbols stop at 9
         })),
         point(body.finish, { role: 'finish', name: body.finish.name, 'marker-color': '#b91c1c' }),
-        ...passedOver.map((station) => point(station, {
+        ...passedOver.map((other) => station(other, {
           role: 'considered, not chosen',
-          name: station.name,
-          city: station.city,
-          state: station.state,
-          mile_marker: station.mile_marker,
-          price_per_gallon: station.price_per_gallon,
+          name: other.name,
+          city: other.city,
+          state: other.state,
+          mile_marker: other.mile_marker,
+          price_per_gallon: other.price_per_gallon,
           'marker-color': '#f97316',
           'marker-size': 'small',
         })),

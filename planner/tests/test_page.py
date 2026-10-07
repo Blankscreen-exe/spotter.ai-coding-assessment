@@ -54,6 +54,7 @@ class PageTestCase(StaticLiveServerTestCase):
     # The database is emptied after each of these tests, settings rows included. The server then
     # runs on the defaults in conf.py, which are the same values.
     station_name = '{town} Truck Stop'
+    station_lat = 40.0  # on the road
 
     @classmethod
     def setUpClass(cls):
@@ -73,7 +74,7 @@ class PageTestCase(StaticLiveServerTestCase):
         cache.clear()
         reset_index()
         self.addCleanup(reset_index)
-        create_trip_data(station_name=self.station_name)
+        create_trip_data(station_name=self.station_name, station_lat=self.station_lat)
         self.route_call = self.enterContext(routing_mock())
 
         context = self.browser.new_context(viewport={'width': 1400, 'height': 900})
@@ -103,6 +104,19 @@ class PageTestCase(StaticLiveServerTestCase):
             if time.monotonic() > deadline:
                 self.fail('Waited, and it never happened.')
             self.page.wait_for_timeout(100)
+
+    def zoom_once_the_map_is_still(self):
+        """The zoom level the map has settled on: that of its newest tiles, once it has stopped asking for more.
+
+        The map first draws its opening view and then moves to frame the trip, so tiles from two
+        zoom levels arrive in turn. Reading the level before that is over gives the wrong one.
+        """
+        self.eventually(lambda: self.tiles)
+        asked = 0
+        while asked != len(self.tiles):
+            asked = len(self.tiles)
+            self.page.wait_for_timeout(600)
+        return self.tiles[-1][0]
 
     def plan_from_the_dialog(self, start, finish):
         self.page.goto(f'{self.live_server_url}/map/')
@@ -259,10 +273,9 @@ class MapPageTests(PageTestCase):
     def test_zoom_buttons_in_the_trip_bar_zoom_the_map(self):
         self.open_trip()
         expect(self.page.locator('.leaflet-control-zoom')).to_have_count(0)  # not Leaflet's own corner control
-        self.eventually(lambda: self.tiles)
-        zoom = max(z for z, _ in self.tiles)
+        zoom = self.zoom_once_the_map_is_still()
         self.page.click('#zoomIn')
-        self.eventually(lambda: max(z for z, _ in self.tiles) == zoom + 1)
+        self.eventually(lambda: self.tiles[-1][0] == zoom + 1)  # the newest tiles are one level closer in
 
     def test_map_tiles_are_asked_for_with_a_referer(self):
         # OpenStreetMap serves "Access blocked" tiles to requests without one, and the page's own
@@ -294,3 +307,37 @@ class HostileTextTests(PageTestCase):
         self.plan_from_the_dialog('<img src=x onerror="window.hacked = 1">, KS', 'Omega, OH')
         expect(self.page.locator('#onboarding .error')).to_contain_text('<img src=x')
         self.assert_nothing_ran()
+
+
+class StationsOffTheRoadTests(PageTestCase):
+    """A station is known only by its town, and the town's centre can be miles from the road.
+
+    Here every station's town is just under five miles north of it. The page draws each station
+    where the route passes it, so that a stop sits on the line.
+    """
+
+    station_lat = 40.07
+
+    def centre_height(self, selector):
+        box = self.page.locator(selector).first.bounding_box()
+        return box['y'] + box['height'] / 2
+
+    def test_a_stop_is_drawn_on_the_route_line(self):
+        self.open_trip()
+        expect(self.page.locator('.pin[data-station]')).to_have_count(2)
+        # The road runs due east, so on screen the route is a level line.
+        line = self.centre_height('.leaflet-overlay-pane path')
+        self.assertAlmostEqual(self.centre_height('.pin[data-station]'), line, delta=1)
+
+    def test_its_popup_says_how_far_away_the_town_is(self):
+        self.open_trip()
+        self.page.locator('.pin[data-station]').first.click()
+        expect(self.page.locator('.leaflet-popup')).to_contain_text("The town's centre is 4.8 mi away")
+
+    def test_geojson_puts_it_on_the_line_and_keeps_where_the_town_is(self):
+        self.open_trip(tab='#geojson')
+        collection = json.loads(self.page.locator('#panel textarea').input_value())
+        stop = next(feature for feature in collection['features'] if feature['properties'].get('role') == 'fuel stop')
+        self.assertEqual(stop['geometry']['coordinates'][1], 40)  # on the road
+        self.assertEqual(stop['properties']['town_centre'][1], 40.07)
+        self.assertEqual(stop['properties']['miles_off_route'], 4.8)

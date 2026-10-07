@@ -305,11 +305,11 @@ python manage.py test                                  # SQLite
 docker compose exec web python manage.py test          # PostgreSQL
 ```
 
-187 tests, 95% line coverage of the Python code. The optimizer is checked against
+190 tests, 95% line coverage of the Python code. The optimizer is checked against
 brute force and an independent formula on random routes. The routing providers
 and Nominatim are mocked, and the suite always uses a private cache.
 
-Sixteen of the tests drive the map page in a real browser (the dialog, the
+Nineteen of the tests drive the map page in a real browser (the dialog, the
 drawers, the counters, the map, the GeoJSON tab, and text that tries to be
 markup). They need the
 development requirements and a Chrome or Edge that is already installed, and
@@ -321,7 +321,7 @@ ruff check . && ruff format --check .                  # linter and formatter
 python manage.py test                                  # now includes the browser tests
 ```
 
-Those sixteen need the network, because the page loads Leaflet from a CDN; the
+Those nineteen need the network, because the page loads Leaflet from a CDN; the
 rest of the suite makes no network calls. A GitHub Actions workflow
 (`.github/workflows/ci.yml`) runs the linter, the tests on SQLite with the
 browser tests, and the tests on PostgreSQL.
@@ -329,7 +329,11 @@ browser tests, and the tests on PostgreSQL.
 ## Limitations
 
 - Stations are positioned at their town centre, not their exact exit, and the
-  detour to reach one is not added to the trip.
+  detour to reach one is not added to the trip. The price file gives no
+  coordinates, only a town and an address such as "I-80 Exit 223". The map
+  draws each station at the point of the route nearest its town, since the
+  stations are at exits on the route; the API's `lat`, `lon` and
+  `miles_off_route` still describe the town centre.
 - With the default full tank, a trip under 500 miles needs no fuel and costs $0.
 - The public OSRM server has no uptime guarantee and routes for cars.
 - Canadian stations in the price file are ignored.
