@@ -1,3 +1,4 @@
+from django.templatetags.static import static
 from django.urls import path
 from django.views.generic import RedirectView
 
@@ -11,4 +12,6 @@ urlpatterns = [
     path('api/v1/session/', views.SessionView.as_view(), name='session'),
     path('map/', views.route_map, name='route-map'),
     path('healthz/', views.health, name='health'),
+    # Browsers ask for this on pages that name no icon of their own, such as the admin.
+    path('favicon.ico', RedirectView.as_view(url=static('planner/favicon.svg'))),
 ]

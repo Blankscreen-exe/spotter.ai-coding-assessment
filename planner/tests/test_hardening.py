@@ -107,3 +107,13 @@ class HealthTests(TestCase):
     def test_not_redirected_to_https(self):
         self.assertEqual(self.client.get(self.url).status_code, 503)
         self.assertEqual(self.client.get(reverse('route-map')).status_code, 301)
+
+
+class FaviconTests(TestCase):
+    def test_pages_without_an_icon_of_their_own_are_sent_to_the_site_icon(self):
+        response = self.client.get('/favicon.ico')
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response['Location'].endswith('/static/planner/favicon.svg'))
+
+    def test_the_map_page_names_its_icon(self):
+        self.assertContains(self.client.get(reverse('route-map')), 'rel="icon" type="image/svg+xml"')
