@@ -32,7 +32,15 @@ button { font: inherit; cursor: pointer; }
 #map { position: absolute; inset: 0; background: #e9eff4; }
 .floating { position: absolute; z-index: 500; top: 12px; display: flex; align-items: center; gap: 10px; background: #fff;
             border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(15, 23, 42, .12); padding: 7px 8px 7px 14px; }
-#tripBar { left: 54px; font-weight: 600; }
+#tripBar { left: 12px; font-weight: 600; }
+/* Zoom lives in the trip bar, as one joined pair, in place of the map's own corner control. */
+#tripBar .divider { width: 1px; align-self: stretch; margin: 2px 0; background: var(--line); }
+.zoom { display: inline-flex; }
+.zoom .secondary { border-radius: 0; }
+.zoom .secondary:first-child { border-radius: 4px 0 0 4px; }
+.zoom .secondary:last-child { border-radius: 0 4px 4px 0; margin-left: -1px; }
+.zoom .secondary:hover, .zoom .secondary:focus-visible { position: relative; z-index: 1; }
+.zoom .secondary:disabled { color: #9aa5b1; border-color: var(--line); cursor: default; }
 #tripBar .arrow { color: var(--muted); font-weight: 400; }
 #tools { right: 12px; padding: 7px 10px; }
 .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 9px; border-radius: 999px;
@@ -178,7 +186,8 @@ dl.facts dd { margin: 0; font-weight: 600; }
   #mapWrap { height: 52vh; }
   body.empty #mapWrap { height: 100vh; }
   #tools { top: auto; bottom: 12px; }
-  #tripBar { right: 12px; justify-content: space-between; }
+  #tripBar { right: 12px; }
+  #tripBar #tripName { margin-right: auto; }
   #strip .knob { width: 100%; }
   #dock { display: block; }
   #panel { overflow-x: auto; }

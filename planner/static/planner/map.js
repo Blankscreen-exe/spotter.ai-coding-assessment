@@ -66,7 +66,15 @@
 
   // ---------- map ----------
 
-  const map = L.map('map').setView([39.5, -98.35], 4);
+  // The page has its own zoom buttons in the trip bar, so the map's corner control is switched off.
+  const map = L.map('map', { zoomControl: false }).setView([39.5, -98.35], 4);
+  $('zoomIn').addEventListener('click', () => map.zoomIn());
+  $('zoomOut').addEventListener('click', () => map.zoomOut());
+  const syncZoomButtons = () => {
+    $('zoomIn').disabled = map.getZoom() >= map.getMaxZoom();
+    $('zoomOut').disabled = map.getZoom() <= map.getMinZoom();
+  };
+  map.on('zoomend', syncZoomButtons);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -76,6 +84,7 @@
     referrerPolicy: 'strict-origin-when-cross-origin',
   }).addTo(map);
   const tripLayer = L.layerGroup().addTo(map);
+  syncZoomButtons();  // now that the tile layer has told the map how far it can zoom
 
   function pin(lat, lon, html, size) {
     return L.marker([lat, lon], { icon: L.divIcon({ className: '', html, iconSize: [size, size], iconAnchor: [size / 2, size / 2] }) });

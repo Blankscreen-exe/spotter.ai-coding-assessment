@@ -283,6 +283,14 @@ class RouteMapTests(TestCase):
         self.assertContains(response, 'planner/map.js')
         self.assertContains(response, 'planner/map.css')
 
+    def test_zoom_buttons_sit_in_the_trip_bar_in_place_of_the_map_corner_control(self):
+        content = self.client.get(self.url).content.decode()
+        trip_bar = content[content.index('id="tripBar"'):content.index('id="tools"')]
+        self.assertLess(trip_bar.index('id="change"'), trip_bar.index('id="zoomOut"'))
+        self.assertIn('id="zoomOut" aria-label="Zoom out" title="Zoom out"', trip_bar)
+        self.assertIn('id="zoomIn" aria-label="Zoom in" title="Zoom in"', trip_bar)
+        self.assertIn("L.map('map', { zoomControl: false })", self.script())
+
     def test_admin_button_opens_the_admin_panel(self):
         response = self.client.get(self.url)
         self.assertContains(response, f'id="openAdmin" href="{reverse("admin:index")}" target="_blank" rel="noopener"')

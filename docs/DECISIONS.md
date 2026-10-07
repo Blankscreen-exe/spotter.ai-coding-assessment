@@ -335,6 +335,10 @@ is visible at once.
    page was built with them in mind. Claude drafted it, I rewrote it in my own
    words, and then asked Claude to tone my version down. The text is in
    `planner/author.py`, and every claim in it is something the page really does.
+8. **Zoom buttons beside "Change trip"** instead of in the map's corner. The
+   map library only puts its own control in a corner, so Claude replaced it
+   with a minus and plus pair inside the trip bar. They sit beside "Change trip"
+   whatever the trip is called, and grey out at the zoom limits.
 
 ## 4. Things testing caught
 
@@ -361,7 +365,7 @@ is visible at once.
 
 ## 5. How it is verified
 
-- 158 automated tests covering 95% of the Python lines, run on both SQLite and PostgreSQL 17.
+- 159 automated tests covering 95% of the Python lines, run on both SQLite and PostgreSQL 17.
 - The rate limit was exercised against the running stack: with the limit then at
   60 a minute, 65 quick requests gave 60 successes and 5 refusals with a
   `Retry-After` header.

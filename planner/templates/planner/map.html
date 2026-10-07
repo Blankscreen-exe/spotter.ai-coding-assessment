@@ -15,6 +15,15 @@
     <div class="floating" id="tripBar">
       <span id="tripName"></span>
       <button type="button" class="secondary" id="change">Change trip</button>
+      <span class="divider" aria-hidden="true"></span>
+      <span class="zoom" role="group" aria-label="Map zoom">
+        <button type="button" class="secondary icon" id="zoomOut" aria-label="Zoom out" title="Zoom out">
+          {% include 'planner/icons.html' with icon='minus' %}
+        </button>
+        <button type="button" class="secondary icon" id="zoomIn" aria-label="Zoom in" title="Zoom in">
+          {% include 'planner/icons.html' with icon='plus' %}
+        </button>
+      </span>
     </div>
     <div class="floating" id="tools">
       <span class="pill" id="health">Checking the server</span>
