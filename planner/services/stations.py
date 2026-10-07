@@ -9,7 +9,8 @@ request never queries the station table. Matching is two vectorised steps:
    and one matrix product gives every station's distance to every route point.
 """
 
-import threading
+import functools
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -22,40 +23,54 @@ SAMPLE_SPACING_MILES = 1.0
 CELL_DEGREES = 0.25
 CHUNK = 1024
 
-_index = None
-_lock = threading.Lock()
+@dataclass(frozen=True, slots=True)
+class Station:
+    """A fuel station as the planner sees it: what it charges, and where its town is."""
+
+    opis_id: int
+    name: str
+    address: str
+    city: str
+    state: str
+    price: float  # USD per gallon
+    lat: float
+    lon: float
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class RouteStation:
-    station: dict
-    mile: float
+    """A station that lies along a route."""
+
+    station: Station
+    mile: float  # how far along the route it is
     off_route_miles: float
 
 
 class StationIndex:
-    def __init__(self, stations):
+    """Stations with their positions as arrays, ready to be matched against a route."""
+
+    def __init__(self, stations: Sequence[Station]):
         self.stations = stations
-        self.lat = np.array([s['lat'] for s in stations], dtype=np.float64)
-        self.lon = np.array([s['lon'] for s in stations], dtype=np.float64)
+        self.lat = np.array([s.lat for s in stations], dtype=np.float64)
+        self.lon = np.array([s.lon for s in stations], dtype=np.float64)
         self.vectors = unit_vectors(self.lat, self.lon)
         self.cells = cell_ids(self.lat, self.lon)
 
 
-def unit_vectors(lat, lon):
+def unit_vectors(lat, lon) -> np.ndarray:
     lat, lon = np.radians(lat), np.radians(lon)
     cos_lat = np.cos(lat)
     return np.column_stack((cos_lat * np.cos(lon), cos_lat * np.sin(lon), np.sin(lat)))
 
 
-def cell_ids(lat, lon, row_shift=0, column_shift=0):
+def cell_ids(lat, lon, row_shift: int = 0, column_shift: int = 0) -> np.ndarray:
     """Grid cell of each point as one integer, optionally shifted by whole cells."""
     rows = np.floor(np.asarray(lat) / CELL_DEGREES).astype(np.int64) + row_shift
     columns = np.floor(np.asarray(lon) / CELL_DEGREES).astype(np.int64) + column_shift
     return rows * 100_000 + columns
 
 
-def cumulative_miles(lat, lon):
+def cumulative_miles(lat, lon) -> np.ndarray:
     """Distance from the first point to each point, along the line (haversine)."""
     lat, lon = np.radians(lat), np.radians(lon)
     a = np.sin(np.diff(lat) / 2) ** 2 + np.cos(lat[:-1]) * np.cos(lat[1:]) * np.sin(np.diff(lon) / 2) ** 2
@@ -63,25 +78,26 @@ def cumulative_miles(lat, lon):
     return np.concatenate(([0.0], np.cumsum(steps)))
 
 
-def get_index():
-    global _index
-    if _index is None:
-        with _lock:
-            if _index is None:
-                rows = FuelStation.objects.filter(place__isnull=False).values(
-                    'opis_id', 'name', 'address', 'city', 'state', 'price',
-                    lat=F('place__lat'), lon=F('place__lon'),
-                )
-                _index = StationIndex([{**row, 'price': float(row['price'])} for row in rows])
-    return _index
+@functools.cache
+def get_index() -> StationIndex:
+    """Every station that has a position, read once per process and then kept.
+
+    The server loads it as it starts (see warmup.py), before any request can ask.
+    """
+    rows = FuelStation.objects.filter(place__isnull=False).values(
+        'opis_id', 'name', 'address', 'city', 'state', 'price',
+        lat=F('place__lat'), lon=F('place__lon'),
+    )
+    return StationIndex([Station(**{**row, 'price': float(row['price'])}) for row in rows])
 
 
-def reset_index():
-    global _index
-    _index = None
+def reset_index() -> None:
+    """Forget the loaded stations, so that they are read again: after an import, and between tests."""
+    get_index.cache_clear()
 
 
-def stations_along(coordinates, route_miles, corridor_miles, index=None):
+def stations_along(coordinates, route_miles: float, corridor_miles: float,
+                   index: StationIndex | None = None) -> list[RouteStation]:
     """Stations within corridor_miles of the route, with their mile marker.
 
     coordinates is the route as [[lon, lat], ...]. Mile markers are scaled so

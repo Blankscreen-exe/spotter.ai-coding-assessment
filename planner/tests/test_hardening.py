@@ -13,9 +13,22 @@ from django.urls import reverse
 from config.toolbar import show_toolbar
 from planner import views
 from planner.models import FuelStation, Place
+from planner.services.places import Location
 from planner.services.stations import reset_index
+from planner.services.trip import Trip, TripPlan
 
 TRIP = {'start': 'Alpha, KS', 'finish': 'Omega, OH'}
+# A planned trip for the tests that are about something other than planning.
+A_TRIP = Trip(
+    start=Location('Alpha, KS', 'Alpha, KS', 40.0, -100.0),
+    finish=Location('Omega, OH', 'Omega, OH', 40.0, -80.0),
+    plan=TripPlan(
+        provider='osrm', distance_miles=1059.0, duration_seconds=57600.0, geometry=[[-100.0, 40.0], [-80.0, 40.0]],
+        range_miles=500.0, mpg=10.0, initial_range_miles=500.0, stop_cost=5.0, corridor_miles=5.0,
+        stops=(), candidates=(),
+    ),
+    routing_calls=0, served_from='plan cache', elapsed_ms=0.1,
+)
 
 
 class ErrorShapeTests(TestCase):
@@ -55,7 +68,7 @@ class RateLimitTests(TestCase):
 
     def setUp(self):
         cache.clear()
-        patcher = mock.patch.object(views, 'plan_trip', return_value={})
+        patcher = mock.patch.object(views, 'plan_trip', return_value=A_TRIP)
         patcher.start()
         self.addCleanup(patcher.stop)
 

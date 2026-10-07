@@ -5,7 +5,7 @@ from .osrm import OSRMProvider
 PROVIDERS = {provider.name: provider for provider in (OSRMProvider(), OpenRouteServiceProvider())}
 
 
-def get_provider(name):
+def get_provider(name: str) -> RoutingProvider:
     return PROVIDERS[name]
 
 

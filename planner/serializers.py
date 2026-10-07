@@ -1,5 +1,8 @@
 """What the API accepts and what it returns. Views and services hold no field names or formats."""
 
+from urllib.parse import urlencode
+
+from django.urls import reverse
 from rest_framework import serializers
 
 from . import conf
@@ -16,6 +19,135 @@ class RouteRequestSerializer(serializers.Serializer):
     stop_cost = serializers.FloatField(min_value=0, required=False)
     include_geometry = serializers.BooleanField(required=False, default=True)
     include_candidates = serializers.BooleanField(required=False, default=False)
+
+
+# ---------- a planned trip ----------
+
+class Rounded(serializers.FloatField):
+    """A number given to a fixed count of decimal places."""
+
+    def __init__(self, places, **kwargs):
+        self.places = places
+        super().__init__(**kwargs)
+
+    def to_representation(self, value):
+        return round(float(value), self.places)
+
+
+class LocationSerializer(serializers.Serializer):
+    query = serializers.CharField()
+    name = serializers.CharField()
+    lat = serializers.FloatField()
+    lon = serializers.FloatField()
+
+
+class RouteStationSerializer(serializers.BaseSerializer):
+    """A station and where it sits on the route: one the planner considered, or (extended below) a fuel stop.
+
+    Read-only, and written out rather than declared field by field: one response
+    can hold several hundred of these, and this is several times quicker.
+    """
+
+    def to_representation(self, on_route):
+        station = on_route.station
+        return {
+            'station_id': station.opis_id,
+            'name': station.name,
+            'address': station.address,
+            'city': station.city,
+            'state': station.state,
+            'lat': station.lat,
+            'lon': station.lon,
+            'mile_marker': round(on_route.mile, 1),
+            'miles_off_route': round(on_route.off_route_miles, 1),
+            'price_per_gallon': round(station.price, 3),
+        }
+
+
+class FuelStopSerializer(RouteStationSerializer):
+    def to_representation(self, stop):
+        return {
+            'order': stop.order,
+            **super().to_representation(stop),
+            'gallons_on_arrival': round(stop.gallons_on_arrival, 2),
+            'gallons_purchased': round(stop.gallons_purchased, 2),
+            'cost': float(stop.cost),
+        }
+
+
+class SummarySerializer(serializers.Serializer):
+    distance_miles = Rounded(1)
+    duration_hours = Rounded(2)
+    fuel_stops = serializers.SerializerMethodField()
+    total_fuel_cost = serializers.FloatField(source='total_cost')
+    gallons_purchased = Rounded(2)
+    gallons_used = Rounded(2)
+    currency = serializers.SerializerMethodField()
+
+    def get_fuel_stops(self, plan):
+        return len(plan.stops)
+
+    def get_currency(self, plan):
+        return 'USD'
+
+
+class VehicleSerializer(serializers.Serializer):
+    max_range_miles = serializers.FloatField(source='range_miles')
+    miles_per_gallon = serializers.FloatField(source='mpg')
+    initial_range_miles = serializers.FloatField()
+
+
+class PlanningSerializer(serializers.Serializer):
+    stop_cost = serializers.FloatField()
+    corridor_miles = serializers.FloatField()
+
+
+class MetaSerializer(serializers.Serializer):
+    routing_provider = serializers.CharField(source='plan.provider')
+    routing_api_calls = serializers.IntegerField(source='routing_calls')
+    served_from = serializers.CharField()
+    stations_considered = serializers.SerializerMethodField()
+    elapsed_ms = serializers.FloatField()
+
+    def get_stations_considered(self, trip):
+        return len(trip.plan.candidates)
+
+
+class TripSerializer(serializers.Serializer):
+    """A planned trip (services.trip.Trip) as the API returns it.
+
+    The route line and the list of stations considered are the two heavy parts,
+    so each can be left out. The context carries the request, and under "asked"
+    what the client asked for, which is what the link to the map repeats.
+    """
+
+    start = LocationSerializer()
+    finish = LocationSerializer()
+    summary = SummarySerializer(source='plan')
+    vehicle = VehicleSerializer(source='plan')
+    planning = PlanningSerializer(source='plan')
+    fuel_stops = FuelStopSerializer(source='plan.stops', many=True)
+    candidate_stations = RouteStationSerializer(source='plan.candidates', many=True)
+    route = serializers.SerializerMethodField()
+    meta = MetaSerializer(source='*')
+    map_url = serializers.SerializerMethodField()
+
+    def __init__(self, *args, include_geometry=True, include_candidates=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not include_geometry:
+            self.fields.pop('route')
+        if not include_candidates:
+            self.fields.pop('candidate_stations')
+
+    def get_route(self, trip):
+        return {
+            'type': 'Feature',
+            'properties': {'provider': trip.plan.provider},
+            'geometry': {'type': 'LineString', 'coordinates': trip.plan.geometry},
+        }
+
+    def get_map_url(self, trip):
+        return self.context['request'].build_absolute_uri(f'{reverse("route-map")}?{urlencode(self.context["asked"])}')
 
 
 # ---------- signing in ----------

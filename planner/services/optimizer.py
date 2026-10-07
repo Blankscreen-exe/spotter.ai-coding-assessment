@@ -21,6 +21,7 @@ reaches mile 0 with exactly the starting fuel left. The destination is a
 station priced below everything, so the vehicle always arrives empty.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
@@ -31,6 +32,8 @@ EPSILON = 1e-9
 
 @dataclass(frozen=True)
 class Candidate:
+    """Somewhere fuel can be bought. ref is the caller's own object, handed back untouched."""
+
     mile: float
     price: float
     ref: Any = None
@@ -43,7 +46,8 @@ class Purchase:
     arrival_range_miles: float
 
 
-def plan_fuel_stops(candidates, trip_miles, range_miles, mpg, start_range_miles, stop_cost=0.0):
+def plan_fuel_stops(candidates: Iterable[Candidate], trip_miles: float, range_miles: float, mpg: float,
+                    start_range_miles: float, stop_cost: float = 0.0) -> list[Purchase]:
     """Return the Purchases, in route order, that minimise the objective."""
     start_range_miles = min(start_range_miles, range_miles)
     stations = sorted(

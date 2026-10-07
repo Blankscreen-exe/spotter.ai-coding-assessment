@@ -39,7 +39,7 @@ class Location:
     lon: float
 
 
-def normalize(name):
+def normalize(name: str) -> str:
     """Fold a place name to a matching key: "St. Louis" -> "saint louis"."""
     text = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode().lower()
     text = text.replace('&', ' and ')
@@ -50,7 +50,7 @@ def normalize(name):
     return re.sub(r'\bmc (?=[a-z])', 'mc', text)
 
 
-def key_variants(name):
+def key_variants(name: str) -> list[str]:
     """Keys to try in order: as given, then with/without a trailing "city"."""
     key = normalize(name)
     variants = [key]
@@ -61,7 +61,7 @@ def key_variants(name):
     return variants
 
 
-def find_place(name, state):
+def find_place(name: str, state: str) -> Place | None:
     for key in key_variants(name):
         place = Place.objects.filter(key=key, state=state).order_by('is_alias', '-land_sqmi').first()
         if place:
@@ -69,7 +69,7 @@ def find_place(name, state):
     return None
 
 
-def _split_state(text):
+def _split_state(text: str) -> tuple[str, str | None]:
     """Split "Chicago, IL" / "Chicago IL" / "Chicago, Illinois" into (city, state code)."""
     if ',' in text:
         city, _, tail = text.rpartition(',')
@@ -88,7 +88,7 @@ def _split_state(text):
     return text, None
 
 
-def resolve_location(text):
+def resolve_location(text: str) -> Location:
     """Turn request text into a Location, or raise LocationError."""
     query = text.strip()
     match = COORDINATES.match(query)

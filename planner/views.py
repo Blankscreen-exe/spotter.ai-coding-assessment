@@ -1,5 +1,3 @@
-from urllib.parse import urlencode
-
 from django.contrib.auth import authenticate, login, logout
 from django.db import DatabaseError, connection
 from django.http import JsonResponse
@@ -21,6 +19,7 @@ from .serializers import (
     ServerSettingsSerializer,
     SettingsChangeSerializer,
     SignInSerializer,
+    TripSerializer,
 )
 from .services import server_settings
 from .services.stations import get_index
@@ -46,21 +45,19 @@ class RoutePlanView(APIView):
         return self._respond(request, request.data)
 
     def _respond(self, request, params):
-        serializer = RouteRequestSerializer(data=params)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-        plan = plan_trip(
-            data['start'],
-            data['finish'],
-            provider_name=data.get('provider'),
-            initial_range_miles=data.get('initial_range_miles'),
-            stop_cost=data.get('stop_cost'),
-            include_geometry=data['include_geometry'],
-            include_candidates=data['include_candidates'],
+        asked = RouteRequestSerializer(data=params)
+        asked.is_valid(raise_exception=True)
+        trip_wanted = dict(asked.validated_data)
+        # The two "include" switches say how much of the answer to send, not which trip to plan.
+        shape = {name: trip_wanted.pop(name) for name in ('include_geometry', 'include_candidates')}
+        trip = plan_trip(
+            trip_wanted['start'],
+            trip_wanted['finish'],
+            provider_name=trip_wanted.get('provider'),
+            initial_range_miles=trip_wanted.get('initial_range_miles'),
+            stop_cost=trip_wanted.get('stop_cost'),
         )
-        query = urlencode({key: value for key, value in data.items() if not key.startswith('include_')})
-        plan['map_url'] = request.build_absolute_uri(f'{reverse("route-map")}?{query}')
-        return Response(plan)
+        return Response(TripSerializer(trip, context={'request': request, 'asked': trip_wanted}, **shape).data)
 
 
 class SettingsView(APIView):

@@ -1,6 +1,7 @@
 from .. import conf
 from ..exceptions import ProviderNotConfigured, RouteNotFound, RoutingProviderError
 from ..models import ProviderCredential
+from ..services.places import Location
 from .base import METERS_PER_MILE, Route, RoutingProvider
 from .polyline import decode_polyline
 
@@ -13,7 +14,7 @@ class OpenRouteServiceProvider(RoutingProvider):
     label = 'OpenRouteService'
     base_url_setting = 'ORS_BASE_URL'
 
-    def route(self, start, finish):
+    def route(self, start: Location, finish: Location) -> Route:
         credential = ProviderCredential.objects.filter(provider=self.name).first()
         if credential is None or not credential.api_key:
             raise ProviderNotConfigured(
