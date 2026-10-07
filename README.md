@@ -45,8 +45,9 @@ and nothing more: every plan on screen came from `POST /api/v1/route/`.
 
 1. It asks "Where are you right now?" and "Where are you headed?", or offers
    four example trips, one of which is an error on purpose.
-2. It then shows the route and stops on a map, the fuel bill, and two sliders
-   (cost per stop, starting fuel) that re-plan when released.
+2. It then shows the route and stops on a map, the fuel bill, and two counters
+   (cost per stop, starting fuel). Click an arrow beside one, or scroll over
+   it, and the trip re-plans.
 3. Along the bottom are five tab names. Clicking one raises a panel: the fuel
    in the tank along the trip, the fuel plan as a table, the same trip at
    different cost-per-stop settings, the API call behind the plan, or server

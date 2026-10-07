@@ -13,9 +13,9 @@ AUTHOR = {
         'paragraphs': [
             'A few things worth knowing while you look around.',
             'You probably have a pile of these to get through, so I built this one with your time in mind.',
-            'The example trips are one click. Let go of a slider and the route re-plans. The API call tab '
-            'shows the exact request behind whatever is on screen, so Postman is optional. There is a '
-            'collection in the repo if you prefer it.',
+            'The example trips are one click. Change a number with its arrows, or scroll over it, and the '
+            'route re-plans. The API call tab shows the exact request behind whatever is on screen, so '
+            'Postman is optional. There is a collection in the repo if you prefer it.',
             'I focused on small things like that: the points where you would otherwise switch tabs and '
             'lose your place.',
             'If something still gets in your way, I would LOVE to hear about it. The reasoning behind '

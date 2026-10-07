@@ -44,14 +44,23 @@
     <div class="fact"><b id="sumStops"></b><span>fuel stops</span></div>
     <div class="fact"><b id="sumMiles"></b><span>miles</span></div>
     <div class="fact"><b id="sumGallons"></b><span>gallons bought</span></div>
-    <label class="knob">
-      <span class="range-head">Cost per stop <output id="costOut"></output></span>
-      <input type="range" id="cost" min="0" max="20" step="1">
-    </label>
-    <label class="knob">
-      <span class="range-head">Starting fuel <output id="fuelOut"></output></span>
-      <input type="range" id="fuel" step="25">
-    </label>
+    {# Two things to try. Each is a number with an arrow either side; scrolling over it changes it too. #}
+    <div class="knob" id="cost" role="group" aria-labelledby="costLabel" title="Click an arrow, or scroll over the number">
+      <span id="costLabel">Cost per stop</span>
+      <span class="stepper">
+        <button type="button" data-step="-1" aria-label="Lower the cost per stop">{% include 'planner/icons.html' with icon='left' size=16 %}</button>
+        <output></output>
+        <button type="button" data-step="1" aria-label="Raise the cost per stop">{% include 'planner/icons.html' with icon='right' size=16 %}</button>
+      </span>
+    </div>
+    <div class="knob" id="fuel" role="group" aria-labelledby="fuelLabel" title="Click an arrow, or scroll over the number">
+      <span id="fuelLabel">Starting fuel</span>
+      <span class="stepper">
+        <button type="button" data-step="-1" aria-label="Start with less fuel">{% include 'planner/icons.html' with icon='left' size=16 %}</button>
+        <output></output>
+        <button type="button" data-step="1" aria-label="Start with more fuel">{% include 'planner/icons.html' with icon='right' size=16 %}</button>
+      </span>
+    </div>
     <div class="say" id="say"></div>
   </section>
 
@@ -112,7 +121,7 @@
       <h2 id="settingsTitle">Server settings</h2>
       <button type="button" class="secondary" id="closeSettings">Close</button>
     </header>
-    <p class="note">What the server uses when a request does not say otherwise. The sliders on the page override two of these for one request only.</p>
+    <p class="note">What the server uses when a request does not say otherwise. The two counters on the page override two of these for one request only.</p>
     <form id="settingsForm" novalidate></form>
   </aside>
 

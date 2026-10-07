@@ -256,7 +256,7 @@ class RouteMapTests(TestCase):
         self.assertEqual(config['settingsUrl'], reverse('settings'))
         self.assertEqual(config['sessionUrl'], reverse('session'))
 
-    def test_sliders_start_from_the_server_settings(self):
+    def test_counters_start_from_the_server_settings(self):
         self.assertEqual(
             self.config()['defaults'], {'stopCost': 5.0, 'rangeMiles': 500.0, 'mpg': 10.0, 'provider': 'osrm'}
         )
@@ -264,6 +264,19 @@ class RouteMapTests(TestCase):
         Setting.objects.filter(key=conf.RANGE_MILES).update(value='400')
         defaults = self.config()['defaults']
         self.assertEqual((defaults['stopCost'], defaults['rangeMiles']), (8.0, 400.0))
+
+    def test_cost_and_fuel_are_counters_with_an_arrow_either_side(self):
+        content = self.client.get(self.url).content.decode()
+        self.assertNotIn('type="range"', content)
+        for name in ('cost', 'fuel'):
+            counter = content[content.index(f'<div class="knob" id="{name}"'):]
+            counter = counter[:counter.index('</div>')]
+            # Lower on the left, raise on the right, the number between them.
+            self.assertLess(counter.index('data-step="-1"'), counter.index('<output>'))
+            self.assertLess(counter.index('<output>'), counter.index('data-step="1"'))
+            self.assertEqual(counter.count('aria-label='), 2)
+        # Scrolling over a counter changes it, so the script has to be allowed to stop the page scrolling.
+        self.assertRegex(self.script(), r"addEventListener\('wheel',[\s\S]*?\{ passive: false \}")
 
     def test_a_link_with_a_trip_is_not_planned_on_the_server(self):
         # /map/?start=...&finish=... is what the API returns as map_url. The script reads the

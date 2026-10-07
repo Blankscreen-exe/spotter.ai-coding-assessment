@@ -289,8 +289,8 @@ Smaller calls, all Claude defaults that I kept:
 
 | Call | Why |
 | --- | --- |
-| The sliders override one request only | They are for trying things; they change nothing for anyone else |
-| The sliders start from the server's current settings | So the page and the API never disagree about the defaults |
+| The two counters override one request only | They are for trying things; they change nothing for anyone else |
+| The counters start from the server's current settings | So the page and the API never disagree about the defaults |
 | Rate limit raised from 60 to 120 requests a minute | The "Stops against cost" tab makes six small requests per trip, all served from cache |
 | "Planning your route" is a plain spinner | The mockup ticked off three stages on a timer, which would have been pretend progress |
 | Everything from a response is escaped before it is shown | Station names and error messages echo data and user input |
@@ -366,6 +366,21 @@ is visible at once.
     drew it as a small SVG: the emoji looks different on every operating
     system, and it has no exact point to stand on, whereas the foot of the
     drawn pole sits on the destination itself at every zoom level.
+12. **Counters instead of sliders, with realistic limits.** I asked why the
+    cost-per-stop slider ran from $0 to $20. Claude measured four long trips:
+    every plan had stopped changing by $20 and stayed the same even at $500 a
+    stop. I then asked for limits that are realistic, because a stop that
+    costs nothing is not, and for counters with an arrow on each side that
+    also change when you scroll over them. The limits themselves are Claude's
+    proposal: cost per stop from $1 to $20 in $1 steps, and starting fuel from
+    50 miles to a full tank in 50-mile steps. $1 rather than a higher floor
+    because most of the change in a plan happens below $5, so a floor of $5
+    would leave the counter with almost nothing to show. These are limits of
+    the page only; the API still accepts any cost from $0 up. The $0 plan
+    stays in the "Stops against cost" table as the baseline the others are
+    compared with, and whatever the server is set to is always within the
+    counter's reach. A run of clicks or a spin of the wheel is sent as one
+    request, 0.3 seconds after the last change.
 
 ## 4. Things testing caught
 
@@ -404,7 +419,7 @@ is visible at once.
   60 a minute, 65 quick requests gave 60 successes and 5 refusals with a
   `Retry-After` header.
 - The page was driven in a headless browser against the live API: example and
-  typed trips, both sliders, every tab, the error messages, a script-injection
+  typed trips, both counters, every tab, the error messages, a script-injection
   attempt typed into the dialog, direct links, and desktop and narrow widths.
 - The Docker stack was rebuilt from an empty volume and exercised with real
   requests.

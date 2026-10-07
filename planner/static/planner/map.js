@@ -134,7 +134,7 @@
     }
     routeBounds = line.getBounds();
     map.invalidateSize();
-    // A new trip is framed whole. A slider change keeps whatever view the user has chosen.
+    // A new trip is framed whole. A change on a counter keeps whatever view the user has chosen.
     const trip = `${body.start.name}|${body.finish.name}`;
     if (trip !== shownTrip) {
       shownTrip = trip;
@@ -230,7 +230,7 @@
       if (!loaded) loadComparison(current);
       if (!loaded || loaded.loading) return '<p class="note">Planning this trip at each cost-per-stop setting...</p>';
       if (loaded.failed) return errorHtml(loaded.failed);
-      // The setting on screen may not be one of the standard rows (the slider goes in $1 steps).
+      // The setting on screen may not be one of the standard rows (the counter goes in $1 steps).
       const rows = loaded.rows.filter((row) => row.cost !== body.planning.stop_cost)
         .concat([{ cost: body.planning.stop_cost, summary: body.summary }]).sort((a, b) => a.cost - b.cost);
       const cheapest = Math.min(...rows.map((row) => row.summary.total_fuel_cost));
@@ -320,12 +320,6 @@
 
   // ---------- showing a plan ----------
 
-  function sliderLabels() {
-    $('costOut').textContent = '$' + $('cost').value;
-    const miles = Number($('fuel').value);
-    $('fuelOut').textContent = Math.round(miles) + ' mi' + (miles >= Number($('fuel').max) ? ' (full)' : '');
-  }
-
   function servedSentence(meta) {
     if (meta.served_from === 'routing provider') return `First request for this trip: one call to the routing server (${meta.elapsed_ms} ms).`;
     if (meta.served_from === 'route cache') return `Same route as before, so no routing call. Only the stops were recomputed (${meta.elapsed_ms} ms).`;
@@ -353,13 +347,9 @@
     $('sumStops').textContent = body.summary.fuel_stops;
     $('sumMiles').textContent = Math.round(body.summary.distance_miles).toLocaleString();
     $('sumGallons').textContent = body.summary.gallons_purchased.toFixed(1);
-    $('cost').max = Math.max(Number($('cost').max), Math.ceil(body.planning.stop_cost));
-    $('cost').value = body.planning.stop_cost;
+    cost.set({ ...costLimits(), value: body.planning.stop_cost });
     // The range is the server's to say; it may have been changed since the page loaded.
-    $('fuel').max = body.vehicle.max_range_miles;
-    $('fuel').step = $('fuel').min = body.vehicle.max_range_miles / 20;
-    $('fuel').value = body.vehicle.initial_range_miles;
-    sliderLabels();
+    fuel.set({ ...fuelLimits(body.vehicle.max_range_miles), value: body.vehicle.initial_range_miles });
     $('say').textContent = servedSentence(body.meta) + deltaSentence(previous, body.summary);
 
     drawTrip(body);
@@ -370,18 +360,18 @@
   }
 
   async function replan() {
+    clearTimeout(planTimer);
     const ticket = ++sequence;
     $('strip').classList.add('busy');
-    const call = await callApi(buildRequest(current.request.start, current.request.finish, Number($('cost').value), Number($('fuel').value)));
+    const call = await callApi(buildRequest(current.request.start, current.request.finish, cost.value, fuel.value));
     if (ticket !== sequence) return;  // a newer change is already on its way
     $('strip').classList.remove('busy');
     lastCall = call;
     if (call.status === 200) { render(call); return; }
     // Keep the plan that is on screen and say why the new one could not be made.
     $('say').innerHTML = errorHtml(call);
-    $('cost').value = current.body.planning.stop_cost;
-    $('fuel').value = current.body.vehicle.initial_range_miles;
-    sliderLabels();
+    cost.set({ value: current.body.planning.stop_cost });
+    fuel.set({ value: current.body.vehicle.initial_range_miles });
     if (tab === 'api') showPanel();
   }
 
@@ -446,17 +436,62 @@
 
   // ---------- controls ----------
 
-  $('cost').max = Math.max(20, Math.ceil(DEFAULTS.stopCost));
-  $('cost').value = DEFAULTS.stopCost;
-  $('fuel').step = DEFAULTS.rangeMiles / 20;
-  $('fuel').min = DEFAULTS.rangeMiles / 20;
-  $('fuel').max = DEFAULTS.rangeMiles;
-  $('fuel').value = DEFAULTS.rangeMiles;
-  sliderLabels();
-  for (const id of ['cost', 'fuel']) {
-    $(id).addEventListener('input', sliderLabels);
-    $(id).addEventListener('change', replan);
+  // What the two counters offer. The API takes more than this (any cost from $0 up, any fuel up to a full
+  // tank); these are the values worth trying by hand. Whatever the server is set to is always within reach.
+  //   Cost per stop, $1 to $20: stopping always costs some time, and past $20 the plans no longer change.
+  //   Starting fuel, 50 miles to a full tank in 50-mile steps: a vehicle with less than that is not setting off.
+  const costLimits = () => ({ min: Math.min(1, DEFAULTS.stopCost), max: Math.max(20, DEFAULTS.stopCost), step: 1 });
+  const fuelLimits = (range) => ({ min: Math.min(50, range), max: range, step: 50 });
+
+  // The page re-plans a moment after the last change, so a run of clicks or a spin of the wheel is one request.
+  let planTimer = 0;
+  function planSoon() {
+    clearTimeout(planTimer);
+    $('strip').classList.add('busy');
+    planTimer = setTimeout(replan, 300);
   }
+
+  // A number with an arrow either side. An arrow moves it one step, and so does scrolling over it: up for
+  // more, down for less. A value from outside the limits (a link, a row of the comparison) is shown as it is.
+  function counter(id, label) {
+    const box = $(id), [less, more] = box.querySelectorAll('button'), out = box.querySelector('output');
+    const state = { value: 0, min: 0, max: 0, step: 1 };
+    const paint = () => {
+      out.textContent = label(state);
+      less.disabled = state.value <= state.min;
+      more.disabled = state.value >= state.max;
+    };
+    // One step, landing on a multiple of the step and never past either end.
+    const move = (direction) => {
+      const { value, min, max, step } = state;
+      if (!current || (direction > 0 ? value >= max : value <= min)) return;
+      const next = direction > 0 ? (Math.floor(value / step) + 1) * step : (Math.ceil(value / step) - 1) * step;
+      state.value = Math.min(max, Math.max(min, next));
+      paint();
+      planSoon();
+    };
+    less.addEventListener('click', () => move(-1));
+    more.addEventListener('click', () => move(1));
+    // A wheel sends one large movement per notch and a trackpad a stream of small ones, so movement is
+    // added up and every 100 units of it is one step. A notch counts as 100 however the browser reports it.
+    let travelled = 0, travelledAt = 0;
+    box.addEventListener('wheel', (event) => {
+      event.preventDefault();  // the page behind stays where it is
+      const amount = Math.max(-100, Math.min(100, event.deltaMode === 0 ? event.deltaY : event.deltaY * 40));
+      if (event.timeStamp - travelledAt > 300 || amount * travelled < 0) travelled = 0;  // a new gesture
+      travelledAt = event.timeStamp;
+      travelled += amount;
+      if (Math.abs(travelled) < 100) return;
+      travelled = 0;
+      move(amount < 0 ? 1 : -1);
+    }, { passive: false });
+    return { get value() { return state.value; }, set(changes) { Object.assign(state, changes); paint(); } };
+  }
+
+  const cost = counter('cost', ({ value }) => '$' + Number(value.toFixed(2)));
+  const fuel = counter('fuel', ({ value, max }) => Math.round(value) + ' mi' + (value >= max ? ' (full)' : ''));
+  cost.set({ ...costLimits(), value: DEFAULTS.stopCost });
+  fuel.set({ ...fuelLimits(DEFAULTS.rangeMiles), value: DEFAULTS.rangeMiles });
 
   // Clicking a tab raises the drawer on it; clicking the open tab again, or the arrow, lowers it.
   $('tabs').addEventListener('click', (event) => {
@@ -476,8 +511,7 @@
   $('panel').addEventListener('click', (event) => {
     const row = event.target.closest('tr.pick');
     if (!row) return;
-    $('cost').value = row.dataset.cost;
-    sliderLabels();
+    cost.set({ value: Number(row.dataset.cost) });
     replan();
   });
 
@@ -674,13 +708,8 @@
     // Show the effect straight away: the plan on screen is redone under the new settings.
     if (current) {
       const saved = changes.settings || {};
-      if ('stops.cost_per_stop' in saved) $('cost').value = DEFAULTS.stopCost;
-      if ('vehicle.range_miles' in saved) {
-        $('fuel').max = DEFAULTS.rangeMiles;
-        $('fuel').step = $('fuel').min = DEFAULTS.rangeMiles / 20;
-        $('fuel').value = DEFAULTS.rangeMiles;
-      }
-      sliderLabels();
+      if ('stops.cost_per_stop' in saved) cost.set({ ...costLimits(), value: DEFAULTS.stopCost });
+      if ('vehicle.range_miles' in saved) fuel.set({ ...fuelLimits(DEFAULTS.rangeMiles), value: DEFAULTS.rangeMiles });
       comparisons.clear();
       replan();
     }

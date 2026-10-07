@@ -3,7 +3,7 @@
   --ink: #1f2933; --muted: #52606d; --line: #d9dee3; --soft: #f3f5f7;
   --blue: #1d4ed8; --blue-soft: #e8efff; --green: #15803d; --green-soft: #e6f4ea;
   --red: #b91c1c; --red-soft: #fdecea; --amber: #92400e; --amber-soft: #fef3c7;
-  --band: #0f172a; --band-ink: #fff; --band-muted: #cbd5e1; --band-accent: #60a5fa;   /* the dark band the numbers sit on */
+  --band: #0f172a; --band-ink: #fff; --band-muted: #cbd5e1; --band-edge: #475569;       /* the dark band the numbers sit on */
   --bar: #e9eef3; --bar-ink: #3e4c59; --bar-hover: #dde5ec; --bar-edge: #cbd5df;       /* the light bar the tab names sit on */
   --side: min(400px, 100vw);              /* width of a side drawer */
   --panel: clamp(130px, 16vh, 180px);     /* height of the bottom drawer's content when open: kept small, tables scroll */
@@ -65,19 +65,22 @@ button { font: inherit; cursor: pointer; }
 .flag { display: block; overflow: visible; color: #111827; filter: drop-shadow(0 1px 2px rgba(15, 23, 42, .45)); }
 .flag .foot { fill: var(--red); }
 
-/* ---- summary numbers and sliders: a dark band, so the answer stands apart from the map above
+/* ---- summary numbers and the two counters: a dark band, so the answer stands apart from the map above
    and the details below ---- */
 #strip { display: flex; align-items: center; gap: 8px 26px; flex-wrap: wrap; padding: 10px 16px;
          background: var(--band); color: var(--band-ink); }
 #strip .money b { font-size: 24px; display: block; line-height: 1.1; }
 #strip .fact b { font-size: 17px; display: block; line-height: 1.2; }
 #strip .money span, #strip .fact span { color: var(--band-muted); font-size: 12px; }
-#strip .knob { display: grid; gap: 3px; width: 210px; font-size: 12px; color: var(--band-muted); }
-.range-head { display: flex; justify-content: space-between; align-items: baseline; }
-.range-head output { color: var(--ink); font-weight: 600; font-size: 13px; }
-#strip .range-head output { color: var(--band-ink); }
-input[type=range] { width: 100%; margin: 2px 0 0; accent-color: var(--blue); }
-#strip input[type=range] { accent-color: var(--band-accent); }
+/* The two things the reader can change: each a number in a box with an arrow either side. */
+#strip .knob { display: grid; gap: 3px; justify-items: start; font-size: 12px; color: var(--band-muted); }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--band-edge); border-radius: 6px; background: rgba(255, 255, 255, .06); }
+.knob:hover .stepper { border-color: var(--band-muted); }
+.stepper button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--band-ink); }
+.stepper button:hover { background: rgba(255, 255, 255, .16); }
+.stepper button:disabled { background: none; opacity: .3; cursor: default; }
+.stepper output { min-width: 5ch; padding: 0 4px; text-align: center; color: var(--band-ink); font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums; }
+#fuel .stepper output { min-width: 13ch; }
 #strip .say { flex-basis: 100%; color: var(--band-muted); font-size: 13px; }
 #strip .say .error { margin: 0; color: var(--ink); }
 #strip.busy .money b { opacity: .35; }
@@ -210,7 +213,6 @@ dl.facts dd { margin: 0; font-weight: 600; }
   #tools { top: auto; bottom: 12px; }
   #tripBar { right: 12px; }
   #tripBar #tripName { margin-right: auto; }
-  #strip .knob { width: 100%; }
   /* No room to sit beside anything: side drawers cover the screen, and the open panel is as tall as its content. */
   :root { --side: 100vw; }
   body.settings-open { padding-right: 0; }

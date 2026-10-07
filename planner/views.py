@@ -213,7 +213,7 @@ def route_map(request):
             'healthUrl': reverse('health'),
             'settingsUrl': reverse('settings'),
             'sessionUrl': reverse('session'),
-            # The sliders start from what the server would use anyway.
+            # The page's two counters start from what the server would use anyway.
             'defaults': {
                 'stopCost': settings_now[conf.STOP_COST],
                 'rangeMiles': settings_now[conf.RANGE_MILES],
