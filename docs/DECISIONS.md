@@ -399,6 +399,16 @@ is visible at once.
     costs one extra request rather than four. The trade-off, which Claude
     pointed out: neighbouring $1 settings often give the same plan, so the
     five rows vary less than the old spread did.
+15. **A realistic upper cap on cost per stop.** The $20 cap was where plans
+    stopped changing, not a real-world figure, and I asked for a realistic
+    one. Claude worked it out from two published numbers: the American
+    Transportation Research Institute puts the cost of running a truck at
+    $91.27 an hour (2023), and a truck's fuel stop takes 10 to 30 minutes from
+    leaving the road to rejoining it. Half an hour at that rate is about $45,
+    so the counter now runs from $1 to $45. Starting fuel needed no change:
+    its cap is the tank. What this does not alter is the planner: on the long
+    trips we measured, plans stop changing somewhere between $6 and $20, so
+    the upper part of the counter is realistic but uneventful.
 
 ## 4. Things testing caught
 

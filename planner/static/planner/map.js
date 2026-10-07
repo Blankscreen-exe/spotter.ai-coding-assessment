@@ -470,9 +470,11 @@
 
   // What the two counters offer. The API takes more than this (any cost from $0 up, any fuel up to a full
   // tank); these are the values worth trying by hand. Whatever the server is set to is always within reach.
-  //   Cost per stop, $1 to $20: stopping always costs some time, and past $20 the plans no longer change.
-  //   Starting fuel, 50 miles to a full tank in 50-mile steps: a vehicle with less than that is not setting off.
-  const costLimits = () => ({ min: Math.min(1, DEFAULTS.stopCost), max: Math.max(20, DEFAULTS.stopCost), step: 1 });
+  //   Cost per stop, $1 to $45. Stopping always costs some time, and $45 is about the most it can: half an
+  //   hour off the road at the $91 or so an hour it costs to run a truck (ATRI's figure for 2023).
+  //   Starting fuel, 50 miles to a full tank in 50-mile steps. Less than that is not setting off, and a tank
+  //   cannot hold more than its range.
+  const costLimits = () => ({ min: Math.min(1, DEFAULTS.stopCost), max: Math.max(45, DEFAULTS.stopCost), step: 1 });
   const fuelLimits = (range) => ({ min: Math.min(50, range), max: range, step: 50 });
 
   // The page re-plans a moment after the last change, so a run of clicks or a spin of the wheel is one request.
