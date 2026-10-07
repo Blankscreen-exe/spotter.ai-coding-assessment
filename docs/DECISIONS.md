@@ -278,13 +278,20 @@ Kubernetes manifests, PostGIS, a JavaScript framework.
   have crashed on the new cache-clearing line. A linter caught it and there is
   now a test for the import.
 
+- **The map showed "Access blocked" tiles.** This one I found myself, running
+  the demo. OpenStreetMap refuses tile requests that carry no `Referer`, and
+  Django's default `Referrer-Policy: same-origin` header stops the browser
+  sending one to other sites. The tile layer now opts back in, sending the
+  origin only. Earlier screenshots had happened to get real tiles, so the check
+  that passed was not checking the right thing; this time the header a browser
+  sends was measured directly.
 - **The tests were clearing the live cache.** Run inside the container they
   used the real Redis, and several tests empty the cache. The test run now
   always gets a private in-process cache.
 
 ## 5. How it is verified
 
-- 119 automated tests covering 94% of lines, run on both SQLite and PostgreSQL 17.
+- 120 automated tests covering 94% of lines, run on both SQLite and PostgreSQL 17.
 - The rate limit was exercised against the running stack: 65 quick requests gave
   60 successes and 5 refusals with a `Retry-After` header.
 - The map page was checked from headless-browser screenshots at desktop and

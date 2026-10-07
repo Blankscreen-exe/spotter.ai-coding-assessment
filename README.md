@@ -222,7 +222,7 @@ python manage.py test                                  # SQLite
 docker compose exec web python manage.py test          # PostgreSQL
 ```
 
-119 tests, 94% line coverage. The optimizer is checked against brute force and an
+120 tests, 94% line coverage. The optimizer is checked against brute force and an
 independent formula on random routes. The routing providers and Nominatim are
 mocked, so the suite makes no network calls, and it always uses a private cache.
 

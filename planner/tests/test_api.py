@@ -181,6 +181,13 @@ class RouteMapTests(TripFixture):
         self.assertContains(response, 'Truck Stop')
         self.assertContains(response, 'LineString')
 
+    def test_map_tiles_are_requested_with_a_referer(self):
+        # OpenStreetMap serves "Access blocked" tiles to requests without a Referer,
+        # and the page's own Referrer-Policy header would otherwise withhold it.
+        response = self.client.get(self.url)
+        self.assertEqual(response.headers['Referrer-Policy'], 'same-origin')
+        self.assertContains(response, "referrerPolicy: 'strict-origin-when-cross-origin'")
+
     def test_empty_form(self):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
