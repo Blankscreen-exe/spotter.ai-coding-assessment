@@ -114,14 +114,29 @@ dl.facts dd { margin: 0; font-weight: 600; }
          transition: opacity .2s, visibility 0s .2s; }
 #shade.open { opacity: 1; visibility: visible; transition: opacity .2s; }
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 1100; width: min(400px, 100vw); display: flex; flex-direction: column;
-          background: #fff; box-shadow: -12px 0 40px rgba(15, 23, 42, .2); padding: 18px 20px; overflow-y: auto;
+          background: #fff; box-shadow: -12px 0 40px rgba(15, 23, 42, .2); padding: 18px 20px 0; overflow-y: auto;
           transform: translateX(105%); visibility: hidden; transition: transform .22s ease, visibility 0s .22s; }
 .drawer.open { transform: none; visibility: visible; transition: transform .22s ease; }
 .drawer header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .drawer h2 { font-size: 18px; margin: 0; }
 .drawer .note { color: var(--muted); font-size: 13px; }
-.drawer footer { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line); }
-.drawer footer .secondary { display: inline-block; }
+#settingsForm { display: flex; flex-direction: column; flex: 1; }
+/* Save and sign-in stay in view however far the list is scrolled. */
+.drawer .foot { position: sticky; bottom: 0; margin-top: auto; padding: 14px 0 16px; border-top: 1px solid var(--line); background: #fff; }
+.drawer .foot .actions:last-child, .drawer .foot p:last-child { margin-bottom: 0; }
+.drawer input, .drawer select { font: inherit; color: var(--ink); padding: 6px 8px; border: 1px solid #9aa5b1; border-radius: 4px; background: #fff; }
+.setting .amount { display: inline-flex; align-items: baseline; gap: 4px; color: var(--ink); font-weight: 600; white-space: nowrap; }
+.setting .amount input { width: 96px; text-align: right; font-weight: 600; }
+.setting select { max-width: 230px; font-weight: 600; }
+.providers input { width: 100%; margin-top: 6px; }
+.problem { color: var(--red); font-size: 12.5px; }
+.problem:not(:empty) { margin-top: 4px; }
+.link.small { font-size: 12.5px; padding: 0; text-decoration: underline; }
+.actions { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.signin { display: grid; gap: 8px; }
+.signin h3 { margin: 0; font-size: 15px; }
+.signin .note { margin: 0; }
+.signin .primary { justify-self: start; }
 .setting { padding: 12px 0; border-top: 1px solid var(--line); }
 .setting .name { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; color: var(--muted); font-size: 13px; }
 .setting .name b { color: var(--ink); font-size: 17px; text-align: right; }

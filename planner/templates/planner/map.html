@@ -92,12 +92,8 @@
       <h2 id="settingsTitle">Server settings</h2>
       <button type="button" class="secondary" id="closeSettings">Close</button>
     </header>
-    <p class="note">What the server uses when a request does not say otherwise, read from the settings table just now.</p>
-    <div id="settingsBody"></div>
-    <footer>
-      <p class="note">The sliders on this page override the cost per stop and the starting fuel for one request only. These are stored for everyone, so changing them needs the admin login.</p>
-      <a class="secondary" id="editSettings" target="_blank" rel="noopener">Edit in the admin</a>
-    </footer>
+    <p class="note">What the server uses when a request does not say otherwise. The sliders on the page override two of these for one request only.</p>
+    <form id="settingsForm" novalidate></form>
   </aside>
 
   {{ config|json_script:"planner-config" }}

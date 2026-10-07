@@ -295,7 +295,8 @@
     const stops = after.fuel_stops - before.fuel_stops, cost = after.total_fuel_cost - before.total_fuel_cost;
     if (!stops && Math.abs(cost) < 0.005) return '';
     const signed = (n, text) => (n > 0 ? '+' : n < 0 ? '−' : '') + text;
-    return ` Against your last plan: ${signed(stops, plural(Math.abs(stops), 'stop'))}, ${signed(cost, money(Math.abs(cost)))} fuel.`;
+    const stopsPart = stops ? signed(stops, plural(Math.abs(stops), 'stop')) : 'the same stops';
+    return ` Against your last plan: ${stopsPart}, ${signed(cost, money(Math.abs(cost)))} fuel.`;
   }
 
   function render(call) {
@@ -430,15 +431,35 @@
   });
 
   // ---------- server settings drawer ----------
+  // Anyone can read the settings. Changing them is for a signed-in account,
+  // because they apply to every client; the server enforces that, not this page.
 
-  function settingValue(setting, providers) {
-    const show = (value) => {
-      if (setting.unit === 'USD') return '$' + value;
-      if (setting.unit) return `${value} ${setting.unit}`;
-      const provider = providers.find((candidate) => candidate.name === value);
-      return provider ? provider.label : value;
-    };
-    return { now: show(setting.value), usual: show(setting.default), changed: setting.value !== setting.default };
+  let server = null;  // the last answer from the settings endpoint
+  let signingIn = false;  // whether a visitor has asked for the sign-in fields
+
+  const csrfToken = () => (document.cookie.match(/(?:^|; )csrftoken=([^;]+)/) || [])[1] || '';
+
+  async function send(method, url, payload) {
+    let response;
+    try {
+      response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
+        body: payload === undefined ? undefined : JSON.stringify(payload),
+      });
+    } catch (error) {
+      return { status: 0, body: { error: { code: 'network_error', message: 'Could not reach the server.' } } };
+    }
+    let body;
+    try { body = await response.json(); } catch (error) { body = { error: { code: 'bad_response', message: `The server answered HTTP ${response.status}.` } }; }
+    return { status: response.status, body };
+  }
+
+  function shown(setting, value) {
+    if (setting.unit === 'USD') return '$' + value;
+    if (setting.unit) return `${value} ${setting.unit}`;
+    const provider = server.providers.find((candidate) => candidate.name === value);
+    return provider ? provider.label : value;
   }
 
   function keyStatus(provider) {
@@ -446,43 +467,164 @@
     return provider.has_key ? '<span class="tag good">API key stored</span>' : '<span class="tag warn">no API key stored</span>';
   }
 
-  async function openSettings() {
-    $('settings').classList.add('open');
-    $('shade').classList.add('open');
-    $('closeSettings').focus();
-    $('settingsBody').innerHTML = '<p class="note">Reading the settings...</p>';
-    let body;
-    try {
-      const response = await fetch(config.settingsUrl);
-      body = await response.json();
-      if (!response.ok) throw new Error();
-    } catch (error) {
-      $('settingsBody').innerHTML = '<div class="error">Could not read the settings from the server.</div>';
+  function field(setting, editable) {
+    if (!editable) return `<b>${esc(shown(setting, setting.value))}</b>`;
+    if (!setting.unit) {
+      return `<select data-setting="${esc(setting.key)}">${server.providers.map((provider) =>
+        `<option value="${esc(provider.name)}" ${provider.name === setting.value ? 'selected' : ''}>${esc(provider.label)}</option>`).join('')}</select>`;
+    }
+    return `<span class="amount">${setting.unit === 'USD' ? '$' : ''}<input type="number" step="any" min="0" data-setting="${esc(setting.key)}" value="${esc(setting.value)}">${setting.unit === 'USD' ? '' : ' ' + esc(setting.unit)}</span>`;
+  }
+
+  function renderSettings(note) {
+    const editor = server.editor;
+    const rows = server.settings.map((setting) => {
+      const changed = setting.value !== setting.default;
+      return `<div class="setting">
+        <label class="name"><span>${esc(setting.label)}</span>${field(setting, editor.can_edit)}</label>
+        <p>${esc(setting.description)}</p>
+        <p><code>${esc(setting.key)}</code>${changed ? ` &middot; <span class="changed">changed from the default, ${esc(shown(setting, setting.default))}</span>` : ''}
+          ${changed && editor.can_edit ? `<button type="button" class="link small" data-restore="${esc(setting.key)}" data-default="${esc(setting.default)}">use the default</button>` : ''}</p>
+        <div class="problem" data-problem="${esc(setting.key)}"></div>
+      </div>`;
+    }).join('');
+    const providers = `<div class="providers"><h3>Routing providers</h3>${server.providers.map((provider) => `<div>
+        <div class="provider"><span>${esc(provider.label)}${provider.active ? ' <span class="tag good">in use</span>' : ''}</span>${keyStatus(provider)}</div>
+        ${provider.needs_key && editor.can_set_keys ? `<input type="password" autocomplete="off" data-key-for="${esc(provider.name)}"
+            placeholder="${provider.has_key ? 'Replace the API key' : 'Paste an API key'}" aria-label="API key for ${esc(provider.label)}">
+          <div class="problem" data-problem="provider_keys.${esc(provider.name)}"></div>` : ''}
+      </div>`).join('')}</div>`;
+
+    let foot;
+    if (editor.can_edit) {
+      foot = `<div class="actions"><button type="submit" class="primary" id="saveSettings" disabled>Save changes</button><span class="note" id="saveNote">${esc(note || '')}</span></div>
+        <p class="note">Saved settings apply to every request from then on. Signed in as <b>${esc(editor.username)}</b>.
+        <button type="button" class="link small" id="signOut">Sign out</button></p>`;
+    } else if (editor.signed_in) {
+      foot = `<p class="note">Signed in as <b>${esc(editor.username)}</b>, which may not change these.
+        <button type="button" class="link small" id="signOut">Sign out</button></p>`;
+    } else if (!signingIn) {
+      foot = `<div class="actions"><button type="button" class="secondary" id="showSignIn">Sign in to edit</button>
+        <span class="note">They apply to every request, so changing them needs an admin account.</span></div>`;
+    } else {
+      foot = `<div class="signin"><h3>Sign in to change these</h3>
+        <input type="text" id="loginName" placeholder="Username" autocomplete="username" aria-label="Username">
+        <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" aria-label="Password">
+        <div class="problem" id="loginProblem"></div>
+        <button type="submit" class="primary" id="signIn">Sign in</button></div>`;
+    }
+    $('settingsForm').innerHTML = rows + providers + `<div class="foot">${foot}</div>`;
+  }
+
+  async function loadSettings(note) {
+    const answer = await send('GET', config.settingsUrl);
+    if (answer.status !== 200) {
+      $('settingsForm').innerHTML = '<div class="error">Could not read the settings from the server.</div>';
       return;
     }
-    // The page was told the defaults when it loaded; someone may have changed them in the admin since.
-    for (const setting of body.settings) {
+    server = answer.body;
+    // The page was told the defaults when it loaded; they may have changed since.
+    for (const setting of server.settings) {
       const name = { 'stops.cost_per_stop': 'stopCost', 'vehicle.range_miles': 'rangeMiles', 'vehicle.mpg': 'mpg', 'routing.provider': 'provider' }[setting.key];
       if (name) DEFAULTS[name] = setting.value;
     }
-    $('settingsBody').innerHTML = body.settings.map((setting) => {
-      const value = settingValue(setting, body.providers);
-      return `<div class="setting">
-        <div class="name"><span>${esc(setting.label)}</span><b>${esc(value.now)}</b></div>
-        <p>${esc(setting.description)}</p>
-        <p><code>${esc(setting.key)}</code>${value.changed ? ` &middot; <span class="changed">changed from the default, ${esc(value.usual)}</span>` : ''}</p>
-      </div>`;
-    }).join('') + `<div class="providers"><h3>Routing providers</h3>${body.providers.map((provider) => `<div class="provider">
-        <span>${esc(provider.label)}${provider.active ? ' <span class="tag good">in use</span>' : ''}</span>${keyStatus(provider)}</div>`).join('')}</div>`;
+    renderSettings(note);
+  }
+
+  function openSettings() {
+    $('settings').classList.add('open');
+    $('shade').classList.add('open');
+    $('closeSettings').focus();
+    $('settingsForm').innerHTML = '<p class="note">Reading the settings...</p>';
+    loadSettings();
   }
 
   function closeSettings() {
+    signingIn = false;
     $('settings').classList.remove('open');
     $('shade').classList.remove('open');
     $('showSettings').focus();
   }
 
-  $('editSettings').href = config.adminUrl;
+  // What the form holds that differs from what the server has.
+  function pendingChanges() {
+    const settings = {}, keys = {};
+    for (const input of $('settingsForm').querySelectorAll('[data-setting]')) {
+      const setting = server.settings.find((candidate) => candidate.key === input.dataset.setting);
+      const value = setting.unit ? (input.value.trim() === '' ? '' : Number(input.value)) : input.value;
+      if (value !== setting.value) settings[setting.key] = value;
+    }
+    for (const input of $('settingsForm').querySelectorAll('[data-key-for]')) {
+      if (input.value.trim()) keys[input.dataset.keyFor] = input.value.trim();
+    }
+    const changes = {};
+    if (Object.keys(settings).length) changes.settings = settings;
+    if (Object.keys(keys).length) changes.provider_keys = keys;
+    return changes;
+  }
+
+  async function saveSettings() {
+    const changes = pendingChanges();
+    if (!Object.keys(changes).length) return;
+    $('saveSettings').disabled = true;
+    $('saveNote').textContent = 'Saving...';
+    const answer = await send('PATCH', config.settingsUrl, changes);
+    if (answer.status !== 200) {
+      // Put each problem under its field; anything else goes next to the button.
+      const fields = (answer.body.error && answer.body.error.fields) || {};
+      $('settingsForm').querySelectorAll('[data-problem]').forEach((slot) => {
+        slot.textContent = [].concat(fields[slot.dataset.problem] || []).join(' ');
+      });
+      $('saveNote').textContent = Object.keys(fields).length ? 'Not saved: see above.' : ((answer.body.error && answer.body.error.message) || 'Not saved.');
+      $('saveSettings').disabled = false;
+      if (answer.status === 401 || answer.status === 403) loadSettings();  // the session ended
+      return;
+    }
+    server = answer.body;
+    for (const setting of server.settings) {
+      const name = { 'stops.cost_per_stop': 'stopCost', 'vehicle.range_miles': 'rangeMiles', 'vehicle.mpg': 'mpg', 'routing.provider': 'provider' }[setting.key];
+      if (name) DEFAULTS[name] = setting.value;
+    }
+    renderSettings('Saved.');
+    // Show the effect straight away: the plan on screen is redone under the new settings.
+    if (current) {
+      const saved = changes.settings || {};
+      if ('stops.cost_per_stop' in saved) $('cost').value = DEFAULTS.stopCost;
+      if ('vehicle.range_miles' in saved) {
+        $('fuel').max = DEFAULTS.rangeMiles;
+        $('fuel').step = $('fuel').min = DEFAULTS.rangeMiles / 20;
+        $('fuel').value = DEFAULTS.rangeMiles;
+      }
+      sliderLabels();
+      comparisons.clear();
+      replan();
+    }
+  }
+
+  async function signIn() {
+    $('signIn').disabled = true;
+    const answer = await send('POST', config.sessionUrl, { username: $('loginName').value, password: $('loginPassword').value });
+    if (answer.status === 200) { loadSettings(); return; }
+    $('loginProblem').textContent = (answer.body.error && answer.body.error.message) || 'Could not sign in.';
+    $('signIn').disabled = false;
+  }
+
+  $('settingsForm').addEventListener('submit', (event) => {
+    event.preventDefault();
+    if ($('signIn')) signIn(); else saveSettings();
+  });
+  $('settingsForm').addEventListener('input', () => {
+    if ($('saveSettings')) { $('saveSettings').disabled = !Object.keys(pendingChanges()).length; $('saveNote').textContent = ''; }
+  });
+  $('settingsForm').addEventListener('click', async (event) => {
+    if (event.target.dataset.restore) {
+      const input = $('settingsForm').querySelector(`[data-setting="${CSS.escape(event.target.dataset.restore)}"]`);
+      input.value = event.target.dataset.default;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    if (event.target.id === 'signOut') { await send('DELETE', config.sessionUrl); signingIn = false; loadSettings(); }
+    if (event.target.id === 'showSignIn') { signingIn = true; renderSettings(); $('loginName').focus(); }
+  });
   $('showSettings').addEventListener('click', openSettings);
   $('closeSettings').addEventListener('click', closeSettings);
   $('shade').addEventListener('click', closeSettings);
