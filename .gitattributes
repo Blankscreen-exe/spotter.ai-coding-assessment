@@ -1,0 +1,4 @@
+# Shell scripts must keep LF endings or they fail inside the Linux container.
+*.sh text eol=lf
+*.py text eol=lf
+*.zip binary

@@ -1,0 +1,137 @@
+{
+  "info": {
+    "name": "Fuel route planner",
+    "description": "Requests for the fuel route planner API. Set the base_url collection variable if the server is not on localhost:8000.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "base_url", "value": "http://localhost:8000"}
+  ],
+  "item": [
+    {
+      "name": "Plan a route (cross-country)",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{base_url}}/api/v1/route/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"New York, NY\",\n  \"finish\": \"Los Angeles, CA\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Plan a route (GET)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/api/v1/route/?start=Chicago, IL&finish=Houston, TX",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "route", ""],
+          "query": [
+            {"key": "start", "value": "Chicago, IL"},
+            {"key": "finish", "value": "Houston, TX"}
+          ]
+        }
+      }
+    },
+    {
+      "name": "Without the route line (small response)",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{base_url}}/api/v1/route/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"New York, NY\",\n  \"finish\": \"Los Angeles, CA\",\n  \"include_geometry\": false\n}"
+        }
+      }
+    },
+    {
+      "name": "Cheapest possible fuel bill (stop_cost 0)",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{base_url}}/api/v1/route/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"New York, NY\",\n  \"finish\": \"Los Angeles, CA\",\n  \"include_geometry\": false,\n  \"stop_cost\": 0\n}"
+        }
+      }
+    },
+    {
+      "name": "Starting with a quarter tank",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{base_url}}/api/v1/route/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Dallas, TX\",\n  \"finish\": \"Austin, TX\",\n  \"include_geometry\": false,\n  \"initial_range_miles\": 125\n}"
+        }
+      }
+    },
+    {
+      "name": "Coordinates instead of names",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{base_url}}/api/v1/route/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"47.6062, -122.3321\",\n  \"finish\": \"25.7617, -80.1918\",\n  \"include_geometry\": false\n}"
+        }
+      }
+    },
+    {
+      "name": "Through OpenRouteService (needs a stored key)",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{base_url}}/api/v1/route/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Chicago, IL\",\n  \"finish\": \"Houston, TX\",\n  \"include_geometry\": false,\n  \"provider\": \"openrouteservice\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Health check",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/healthz/"
+      }
+    },
+    {
+      "name": "Server settings",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/api/v1/settings/"
+      }
+    },
+    {
+      "name": "Error: ambiguous place",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{base_url}}/api/v1/route/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Springfield\",\n  \"finish\": \"Miami, FL\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Error: missing field",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{base_url}}/api/v1/route/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Chicago, IL\"\n}"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,228 @@
+/* The map page: an onboarding dialog, then map on top, summary strip, tabbed panel below. */
+:root {
+  --ink: #1f2933; --muted: #52606d; --line: #d9dee3; --soft: #f3f5f7;
+  --blue: #1d4ed8; --blue-soft: #e8efff; --green: #15803d; --green-soft: #e6f4ea;
+  --red: #b91c1c; --red-soft: #fdecea; --amber: #92400e; --amber-soft: #fef3c7;
+  --band: #0f172a; --band-ink: #fff; --band-muted: #cbd5e1; --band-edge: #475569;       /* the dark band the numbers sit on */
+  /* One colour per number on the band. The four were checked to stay apart for colour-blind readers,
+     and each number keeps its label, so colour is never the only thing telling them apart. */
+  --kpi-cost: #86efac; --kpi-stops: #60a5fa; --kpi-miles: #f472b6; --kpi-gallons: #fbbf24;
+  --bar: #e9eef3; --bar-ink: #3e4c59; --bar-hover: #dde5ec; --bar-edge: #cbd5df;       /* the light bar the tab names sit on */
+  --side: min(400px, 100vw);              /* width of a side drawer */
+  --panel: clamp(130px, 16vh, 180px);     /* height of the bottom drawer's content when open: kept small, tables scroll */
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; font: 14px/1.45 system-ui, sans-serif; color: var(--ink); }
+/* Three rows: the map, the numbers, and the bottom drawer (tab names, plus a panel that is
+   closed until a tab is clicked). The map takes whatever height is left. */
+body { display: grid; grid-template-rows: 1fr auto auto; height: 100vh; overflow: hidden; transition: padding-right .22s ease; }
+/* The settings drawer sits beside the page: everything else makes room for it. */
+body.settings-open { padding-right: var(--side); }
+body.empty { grid-template-rows: 1fr; }
+body.empty #strip, body.empty #dock, body.empty #tripBar { display: none; }
+a { color: var(--blue); }
+p { margin: 0 0 8px; }
+button { font: inherit; cursor: pointer; }
+.hint { color: var(--muted); font-size: 12px; }
+
+.primary { padding: 10px 18px; border: 0; border-radius: 4px; background: var(--blue); color: #fff; font-weight: 600; font-size: 15px; }
+.primary:disabled { opacity: .65; cursor: progress; }
+.secondary { padding: 6px 10px; border: 1px solid #9aa5b1; border-radius: 4px; background: #fff; color: var(--ink); text-decoration: none; white-space: nowrap; }
+.secondary.icon { display: inline-grid; place-items: center; padding: 6px; line-height: 0; }
+.secondary:hover { border-color: var(--blue); color: var(--blue); }
+.link { border: 0; background: none; color: var(--muted); padding: 6px 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); color: var(--ink); font-size: 13px; }
+.chip:hover { border-color: var(--blue); background: var(--blue-soft); }
+.error { background: var(--red-soft); border: 1px solid #f5c2c0; padding: 8px 10px; border-radius: 4px; margin-bottom: 10px; }
+.error code { font-size: 12px; }
+
+/* ---- map and what floats on it ---- */
+#mapWrap { position: relative; min-height: 0; }
+#map { position: absolute; inset: 0; background: #e9eff4; }
+.floating { position: absolute; z-index: 500; top: 12px; display: flex; align-items: center; gap: 10px; background: #fff;
+            border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(15, 23, 42, .12); padding: 7px 8px 7px 14px; }
+#tripBar { left: 12px; font-weight: 600; }
+/* Zoom lives in the trip bar, as one joined pair, in place of the map's own corner control. */
+#tripBar .divider { width: 1px; align-self: stretch; margin: 2px 0; background: var(--line); }
+.zoom { display: inline-flex; }
+.zoom .secondary { border-radius: 0; }
+.zoom .secondary:first-child { border-radius: 4px 0 0 4px; }
+.zoom .secondary:last-child { border-radius: 0 4px 4px 0; margin-left: -1px; }
+.zoom .secondary:hover, .zoom .secondary:focus-visible { position: relative; z-index: 1; }
+.zoom .secondary:disabled { color: #9aa5b1; border-color: var(--line); cursor: default; }
+#tripBar .arrow { color: var(--muted); font-weight: 400; }
+#tools { right: 12px; padding: 7px 10px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 9px; border-radius: 999px;
+        background: var(--soft); color: var(--muted); white-space: nowrap; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.ok { background: var(--green-soft); color: var(--green); }
+.pill.bad { background: var(--red-soft); color: var(--red); }
+
+.pin { display: grid; place-items: center; border-radius: 50%; background: #fff; border: 3px solid var(--blue); color: var(--blue);
+       font: 700 12px system-ui, sans-serif; box-shadow: 0 1px 4px rgba(15, 23, 42, .35); }
+.pin.hot { background: var(--blue); color: #fff; }
+.pin.end { border-color: #fff; }
+.pin.start { background: var(--green); }
+.flag { display: block; overflow: visible; color: #111827; filter: drop-shadow(0 1px 2px rgba(15, 23, 42, .45)); }
+.flag .foot { fill: var(--red); }
+
+/* ---- summary numbers and the two counters: a dark band, so the answer stands apart from the map above
+   and the details below ---- */
+#strip { display: flex; align-items: center; gap: 8px 26px; flex-wrap: wrap; padding: 10px 16px;
+         background: var(--band); color: var(--band-ink); }
+#strip .money b { font-size: 24px; display: block; line-height: 1.1; }
+#strip .fact b { font-size: 17px; display: block; line-height: 1.2; }
+#strip .money span, #strip .fact span { color: var(--band-muted); font-size: 12px; }
+#strip .money b { color: var(--kpi-cost); }
+#strip .stops b { color: var(--kpi-stops); }
+#strip .miles b { color: var(--kpi-miles); }
+#strip .gallons b { color: var(--kpi-gallons); }
+/* The results are coloured; the two things the reader can change are white, in a box with an arrow either side. */
+#strip .knob { display: grid; gap: 3px; justify-items: start; font-size: 12px; color: var(--band-muted); }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--band-edge); border-radius: 6px; background: rgba(255, 255, 255, .06); }
+.knob:hover .stepper { border-color: var(--band-muted); }
+.stepper button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--band-ink); }
+.stepper button:hover { background: rgba(255, 255, 255, .16); }
+.stepper button:disabled { background: none; opacity: .3; cursor: default; }
+.stepper output { min-width: 5ch; padding: 0 4px; text-align: center; color: var(--band-ink); font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums; }
+#fuel .stepper output { min-width: 13ch; }
+#strip .say { flex-basis: 100%; color: var(--band-muted); font-size: 13px; }
+#strip .say .error { margin: 0; color: var(--ink); }
+#strip.busy .money b { opacity: .35; }
+
+/* ---- tabbed panel ---- */
+#dock { min-height: 0; background: #fff; }
+/* On a narrow screen the tab names scroll sideways by swipe; the bar itself never shows a scrollbar. */
+.tabs { display: flex; align-items: stretch; padding: 0 8px; background: var(--bar); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tab { border: 0; border-left: 1px solid transparent; border-right: 1px solid transparent; background: none; padding: 10px 16px; color: var(--bar-ink); white-space: nowrap; }
+.tab:hover { color: var(--ink); background: var(--bar-hover); }
+/* The open tab is white, like the panel it belongs to. Its blue line is drawn inside the tab, so nothing
+   overflows the bar (an overflow there shows a scrollbar). */
+.tab.on, .tab.on:hover { background: #fff; color: var(--blue); font-weight: 600; border-color: var(--bar-edge); box-shadow: inset 0 3px 0 var(--blue); }
+#collapse { margin-left: auto; display: inline-grid; place-items: center; padding: 0 10px; color: var(--bar-ink); }
+#collapse:hover { color: var(--blue); }
+/* Closed, the panel has no height at all. */
+#panel { height: 0; overflow: hidden; padding: 0 16px; background: #fff; transition: height .22s ease, padding .22s ease; }
+body.dock-open #panel { height: var(--panel); overflow: auto; padding: 8px 16px 10px; }
+#panel table { border-collapse: collapse; width: 100%; }
+#panel th, #panel td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+#panel th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; position: sticky; top: -8px; background: #fff; }
+#panel td.num, #panel th.num { text-align: right; font-variant-numeric: tabular-nums; }
+#panel tr.total td { font-weight: 700; border-bottom: 0; }
+#panel tr.current td { background: var(--blue-soft); font-weight: 600; }
+#panel tr.pick { cursor: pointer; }
+#panel tr.pick:hover td, #panel tr.stoprow.hot td { background: var(--blue-soft); }
+#panel pre { margin: 0 0 10px; padding: 10px; background: #111827; color: #e5e7eb; border-radius: 6px; overflow: auto;
+             font: 11.5px/1.5 ui-monospace, Consolas, monospace; white-space: pre; }
+#panel h3 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+#panel .note { color: var(--muted); margin: 6px 0; }
+dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 0 0 12px; }
+dl.facts dt { color: var(--muted); }
+dl.facts dd { margin: 0; font-weight: 600; }
+
+/* fuel timeline */
+/* Sized from the open height directly, so it is right from the first frame of the slide. */
+#chart { width: 100%; height: calc(var(--panel) - 22px); display: block; }
+#chart text { font-size: 11px; fill: var(--muted); }
+#chart .stopmark text.n { fill: var(--blue); font-weight: 700; }
+#chart .price { fill: var(--ink); }
+#chart .stopmark.hot circle { fill: var(--blue); }
+#chart .stopmark.hot text.n { fill: #fff; }
+#chart .stopmark.hot line { stroke-opacity: 1; stroke-width: 2; }
+
+/* ---- onboarding dialog ---- */
+.veil { position: fixed; inset: 0; background: rgba(15, 23, 42, .45); display: grid; place-items: center; z-index: 1200; }
+.dialog { width: min(540px, calc(100vw - 32px)); background: #fff; border-radius: 14px; padding: 28px; box-shadow: 0 20px 60px rgba(15, 23, 42, .35); }
+.dots { display: flex; gap: 6px; margin-bottom: 18px; }
+.dots i { width: 28px; height: 4px; border-radius: 2px; background: var(--line); }
+.dots i.on { background: var(--blue); }
+.dialog h2 { font-size: 24px; margin: 0 0 6px; }
+.dialog .sub { color: var(--muted); margin-bottom: 16px; }
+.dialog input[type=text] { width: 100%; font: inherit; font-size: 17px; color: var(--ink); padding: 11px 12px; margin-bottom: 14px;
+                           border: 1px solid #9aa5b1; border-radius: 4px; }
+.dialog .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.dialog .row .primary { margin-left: auto; }
+.examples { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+.working { text-align: center; padding: 20px 0 10px; color: var(--muted); }
+.spinner { width: 34px; height: 34px; margin: 0 auto 14px; border: 4px solid var(--blue-soft); border-top-color: var(--blue);
+           border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- server settings drawer (above Leaflet's own controls, which sit at 1000) ---- */
+#shade { position: fixed; inset: 0; z-index: 1090; background: rgba(15, 23, 42, .3); opacity: 0; visibility: hidden;
+         transition: opacity .2s, visibility 0s .2s; }
+#shade.open { opacity: 1; visibility: visible; transition: opacity .2s; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 1100; width: var(--side); display: flex; flex-direction: column;
+          background: #fff; box-shadow: -12px 0 40px rgba(15, 23, 42, .2); padding: 18px 20px 0; overflow-y: auto;
+          transform: translateX(105%); visibility: hidden; transition: transform .22s ease, visibility 0s .22s; }
+.drawer.open { transform: none; visibility: visible; transition: transform .22s ease; }
+.drawer header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.drawer h2 { font-size: 18px; margin: 0; }
+.drawer .note { color: var(--muted); font-size: 13px; }
+#settingsForm { display: flex; flex-direction: column; flex: 1; }
+/* Save and sign-in stay in view however far the list is scrolled. */
+.drawer .foot { position: sticky; bottom: 0; margin-top: auto; padding: 14px 0 16px; border-top: 1px solid var(--line); background: #fff; }
+.drawer .foot .actions:last-child, .drawer .foot p:last-child { margin-bottom: 0; }
+.drawer input, .drawer select { font: inherit; color: var(--ink); padding: 6px 8px; border: 1px solid #9aa5b1; border-radius: 4px; background: #fff; }
+.setting .amount { display: inline-flex; align-items: baseline; gap: 4px; color: var(--ink); font-weight: 600; white-space: nowrap; }
+.setting .amount input { width: 96px; text-align: right; font-weight: 600; }
+.setting select { max-width: 230px; font-weight: 600; }
+/* ---- about drawer ---- */
+.letter { padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.letter p { font-size: 15px; line-height: 1.55; margin: 0 0 10px; }
+.letter .hello { font-size: 22px; font-weight: 700; line-height: 1.25; margin: 6px 0 12px; }
+.letter .signoff { font-weight: 600; margin: 14px 0 0; }
+.letter code { font-size: 13.5px; padding: 1px 6px; border-radius: 4px; background: var(--blue-soft); color: var(--blue); }
+.drawer h3 { margin: 16px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.links { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.links a { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); text-decoration: none; }
+.links a:hover { border-color: var(--blue); background: var(--blue-soft); }
+.links svg { flex: none; color: var(--blue); }
+.links b { display: block; }
+.links small { color: var(--muted); font-size: 12.5px; word-break: break-all; }
+#about { padding-bottom: 18px; }
+#about header { justify-content: flex-end; margin-bottom: 0; }
+
+/* The API key for the selected provider, attached to the provider choice above it. */
+#keyBox:not(:empty) { margin-top: 8px; }
+.keybox { display: grid; gap: 6px; padding: 10px 12px; background: var(--soft); border-left: 3px solid var(--blue); border-radius: 0 6px 6px 0; }
+.keybox label { font-size: 13px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.keybox input { width: 100%; }
+.keybox .note { margin: 0; font-size: 12.5px; }
+.keybox .getkey { font-size: 13px; font-weight: 600; justify-self: start; }
+.problem { color: var(--red); font-size: 12.5px; }
+.problem:not(:empty) { margin-top: 4px; }
+.link.small { font-size: 12.5px; padding: 0; text-decoration: underline; }
+.actions { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.signin { display: grid; gap: 8px; }
+.signin h3 { margin: 0; font-size: 15px; }
+.signin .note { margin: 0; }
+.signin .primary { justify-self: start; }
+.setting { padding: 12px 0; border-top: 1px solid var(--line); }
+.setting .name { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; color: var(--muted); font-size: 13px; }
+.setting .name b { color: var(--ink); font-size: 17px; text-align: right; }
+.setting p { margin: 4px 0 0; color: var(--muted); font-size: 12.5px; }
+.setting code { font-size: 11.5px; color: var(--muted); }
+.changed { color: var(--amber); }
+.tag { font-size: 12px; padding: 2px 8px; border-radius: 4px; background: var(--soft); color: var(--muted); white-space: nowrap; }
+.tag.good { background: var(--green-soft); color: var(--green); }
+.tag.warn { background: var(--amber-soft); color: var(--amber); }
+
+/* ---- narrow screens: the page scrolls instead of fitting one screen ---- */
+@media (max-width: 720px) {
+  html, body { height: auto; }
+  body { display: block; overflow: visible; }
+  #mapWrap { height: 52vh; }
+  body.empty #mapWrap { height: 100vh; }
+  #tools { top: auto; bottom: 12px; }
+  #tripBar { right: 12px; }
+  #tripBar #tripName { margin-right: auto; }
+  /* No room to sit beside anything: side drawers cover the screen, and the open panel is as tall as its content. */
+  :root { --side: 100vw; }
+  body.settings-open { padding-right: 0; }
+  body.dock-open #panel { height: auto; overflow-x: auto; }
+  #chart { height: 226px; }
+}
