@@ -254,7 +254,7 @@ One option was measured and rejected: OSRM's "simplified" route comes back in
 
 | Added | Why |
 | --- | --- |
-| Rate limit, 60 requests a minute per client | The API is open and every new trip costs a call to a free public server |
+| Rate limit per client (60 requests a minute at first, 120 since 3.15) | The API is open and every new trip costs a call to a free public server |
 | `GET /healthz/` | Lets Docker (or a load balancer) know when the app can actually serve; 503 until the data is loaded |
 | One JSON shape for every error, including unexpected ones | A client never gets an HTML error page, and internals are logged, not returned |
 | HTTPS settings behind `DJANGO_SECURE` | Clears Django's deploy check except two HSTS options that commit a whole domain |
@@ -265,6 +265,35 @@ One option was measured and rejected: OSRM's "simplified" route comes back in
 Deliberately not added, because each would be more to explain than it shows for
 a single endpoint: OpenAPI/Swagger pages, authentication, a task queue,
 Kubernetes manifests, PostGIS, a JavaScript framework.
+
+### 3.15 The page a reviewer uses
+
+- **What I asked for:** everything a reviewer would otherwise do in Postman or
+  the admin (change the cost per stop, start with less fuel, see an error, check
+  the server) should be doable from the page, and the flow should feel easy.
+- **How it was decided:** with clickable mockups, not descriptions.
+  1. Claude built three concepts, all with a sidebar next to the map.
+  2. I asked why it had to be a sidebar and proposed my own: a dialog that asks
+     "Where are you right now?" and "Where are you headed?", then shows the
+     route at default settings and lets you tweak from there.
+  3. Claude built that and three more without a sidebar: a fuel timeline under
+     the map, a conversation, and a tabbed report.
+  4. I picked pieces from three of them: my onboarding, the fuel timeline, and
+     the report's tables. Claude mocked three ways to lay those out and I chose
+     the map on top with a tabbed panel below.
+- **What the page is:** a client of the API. The server plans nothing for it;
+  the script calls `POST /api/v1/route/` and the "API call" tab shows the call.
+  A link with a trip in it (the API's `map_url`) opens straight on that trip.
+
+Smaller calls, all Claude defaults that I kept:
+
+| Call | Why |
+| --- | --- |
+| The sliders override one request; the stored settings stay in the admin | Letting a public page write the settings table would let anyone change it |
+| The sliders start from the server's current settings | So the page and the API never disagree about the defaults |
+| Rate limit raised from 60 to 120 requests a minute | The "Stops against cost" tab makes six small requests per trip, all served from cache |
+| "Planning your route" is a plain spinner | The mockup ticked off three stages on a timer, which would have been pretend progress |
+| Everything from a response is escaped before it is shown | Station names and error messages echo data and user input |
 
 ## 4. Things testing caught
 
@@ -291,11 +320,13 @@ Kubernetes manifests, PostGIS, a JavaScript framework.
 
 ## 5. How it is verified
 
-- 120 automated tests covering 94% of lines, run on both SQLite and PostgreSQL 17.
-- The rate limit was exercised against the running stack: 65 quick requests gave
-  60 successes and 5 refusals with a `Retry-After` header.
-- The map page was checked from headless-browser screenshots at desktop and
-  narrow widths.
+- 121 automated tests covering 94% of the Python lines, run on both SQLite and PostgreSQL 17.
+- The rate limit was exercised against the running stack: with the limit then at
+  60 a minute, 65 quick requests gave 60 successes and 5 refusals with a
+  `Retry-After` header.
+- The page was driven in a headless browser against the live API: example and
+  typed trips, both sliders, every tab, the error messages, a script-injection
+  attempt typed into the dialog, direct links, and desktop and narrow widths.
 - The Docker stack was rebuilt from an empty volume and exercised with real
   requests.
 - Routes were planned against the live OSRM server throughout.
@@ -311,3 +342,5 @@ Kubernetes manifests, PostGIS, a JavaScript framework.
   restart after a re-import. Cached plans live for an hour.
 - There is no authentication; the brief did not ask for it. There is no CI
   workflow yet either.
+- The page's JavaScript has no automated tests; it was checked by
+  driving it in a headless browser (section 5).

@@ -38,6 +38,23 @@ python manage.py runserver
 No environment variables are needed for this path. `.env.example` lists the
 optional ones.
 
+## The page
+
+`/map/` is the quickest way to try everything. It is a client of the API below
+and nothing more: every plan on screen came from `POST /api/v1/route/`.
+
+1. It asks "Where are you right now?" and "Where are you headed?", or offers
+   four example trips, one of which is an error on purpose.
+2. It then shows the route and stops on a map, the fuel bill, and two sliders
+   (cost per stop, starting fuel) that re-plan when released.
+3. A panel underneath has five tabs: the fuel in the tank along the trip, the
+   fuel plan as a table, the same trip at different cost-per-stop settings, the
+   API call behind the plan, and server details.
+
+Pointing at a stop on the map, the chart or the table highlights it in the
+others. A link such as `/map/?start=Chicago, IL&finish=Houston, TX` opens
+straight on that trip, which is what `map_url` in an API response is.
+
 ## The API
 
 `POST /api/v1/route/` with a JSON body, or `GET` with the same fields in the
@@ -120,7 +137,7 @@ Errors all have the shape `{"error": {"code": "...", "message": "..."}}`:
 | 400 | `location_not_found` | A place cannot be resolved, or its name is ambiguous without a state |
 | 422 | `route_not_found` | No driving route exists between the two points |
 | 422 | `no_feasible_fuel_plan` | A stretch of the route has no station within range |
-| 429 | `throttled` | More than 60 requests a minute from one client (`Retry-After` says when to retry) |
+| 429 | `throttled` | More than 120 requests a minute from one client (`Retry-After` says when to retry) |
 | 500 | `internal_error` | Anything unexpected; details go to the server log, not the response |
 | 502 | `routing_provider_error` | The routing API failed or timed out |
 | 503 | `routing_provider_not_configured` | The chosen provider has no API key |
@@ -199,7 +216,7 @@ The ones that matter beyond a local run:
 | `DATABASE_URL`, `REDIS_URL` | PostgreSQL and Redis. Unset means SQLite and an in-process cache |
 | `DJANGO_DEBUG`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS` | The usual Django three. The secret key is required when debug is off |
 | `DJANGO_SECURE` | `true` behind an HTTPS proxy: redirect to https, HSTS, secure cookies |
-| `API_RATE_LIMIT` | Requests per client on the route endpoint. Default `60/min`; empty disables it |
+| `API_RATE_LIMIT` | Requests per client on the route endpoint. Default `120/min`; empty disables it |
 
 ### Using OpenRouteService
 
@@ -222,9 +239,10 @@ python manage.py test                                  # SQLite
 docker compose exec web python manage.py test          # PostgreSQL
 ```
 
-120 tests, 94% line coverage. The optimizer is checked against brute force and an
-independent formula on random routes. The routing providers and Nominatim are
-mocked, so the suite makes no network calls, and it always uses a private cache.
+121 tests, 94% line coverage of the Python code. The optimizer is checked against
+brute force and an independent formula on random routes. The routing providers
+and Nominatim are mocked, so the suite makes no network calls, and it always
+uses a private cache.
 
 ## Limitations
 
@@ -235,6 +253,8 @@ mocked, so the suite makes no network calls, and it always uses a private cache.
 - Canadian stations in the price file are ignored.
 - The station index is loaded once per server process; restart the server after
   re-importing data.
+- The page's JavaScript has no automated tests. It was checked by driving the
+  running page in a headless browser.
 
 ## Data sources
 
@@ -263,6 +283,7 @@ planner/
     trip.py                puts the pieces together, caching
   management/commands/     data import, credential management
   views.py, serializers.py API, map page, health check
+  templates/, static/      the map page: markup, styles, and the script that calls the API
   handlers.py              one JSON shape for every API error
   throttling.py            per-client rate limit
   warmup.py                work done once at server start
