@@ -341,3 +341,34 @@ class StationsOffTheRoadTests(PageTestCase):
         self.assertEqual(stop['geometry']['coordinates'][1], 40)  # on the road
         self.assertEqual(stop['properties']['town_centre'][1], 40.07)
         self.assertEqual(stop['properties']['miles_off_route'], 4.8)
+        # The stations passed over are left at their towns, there as on the map.
+        self.page.check('#panel input[type=checkbox]')
+        self.eventually(lambda: len(json.loads(self.page.locator('#panel textarea').input_value())['features']) == 7)
+        others = [
+            feature
+            for feature in json.loads(self.page.locator('#panel textarea').input_value())['features']
+            if feature['properties'].get('role') == 'considered, not chosen'
+        ]
+        self.assertEqual([feature['geometry']['coordinates'][1] for feature in others], [40.07, 40.07])
+
+    def test_stations_passed_over_stay_at_their_towns_beside_the_route(self):
+        self.open_trip()
+        line = self.centre_height('.leaflet-overlay-pane path')
+        # The dots are drawn on a canvas, so find them by their colour: the average height of the orange.
+        dots = self.page.evaluate("""() => {
+            const canvas = document.querySelector('.leaflet-stations-pane canvas');
+            const box = canvas.getBoundingClientRect(), scale = canvas.height / box.height;
+            const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+            let total = 0, count = 0;
+            for (let y = 0; y < canvas.height; y++) {
+                for (let x = 0; x < canvas.width; x++) {
+                    const i = (y * canvas.width + x) * 4;
+                    const orange = pixels[i + 3] > 200 && pixels[i] > 220 && pixels[i + 1] > 90
+                        && pixels[i + 1] < 150 && pixels[i + 2] < 60;
+                    if (orange) { total += box.y + y / scale; count += 1; }
+                }
+            }
+            return count ? total / count : null;
+        }""")
+        self.assertIsNotNone(dots)
+        self.assertLess(dots, line - 3)  # their towns are north of the road, so they sit above the line

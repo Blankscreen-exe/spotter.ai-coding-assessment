@@ -128,10 +128,11 @@
     return box;
   }
 
-  // Where a station is drawn. The price file gives a station's town, not its position, so the data places it
-  // at the centre of that town, which can be a few miles from the road. The stations themselves are at exits
-  // on the route, so each is drawn at the point of the route nearest its town. Only the drawing moves: the
-  // API's own numbers, miles_off_route among them, are untouched.
+  // Where a fuel stop is drawn. The price file gives a station's town, not its position, so the data places
+  // it at the centre of that town, which can be a few miles from the road. The stations themselves are at
+  // exits on the route, so a stop is drawn at the point of the route nearest its town, and sits on the line.
+  // The stations passed over stay at their towns' centres: scattered beside the route, they show the band
+  // of country the planner chose from. Only the drawing moves: the API's own numbers are untouched.
   let snappedTo = '';          // which route the answers below belong to
   const snapped = new Map();   // "lat,lon" of a town -> [lat, lon] on that route
   function onRoute(body, place) {
@@ -186,7 +187,7 @@
     }
     passedOver = [...towns.values()].map((stations) => {
       const [first] = stations.sort((a, b) => a.price_per_gallon - b.price_per_gallon);
-      return L.circleMarker(onRoute(body, first), { renderer: dots, radius: dotSize(), weight: 1, color: '#fff', fillColor: '#f97316', fillOpacity: 0.95 })
+      return L.circleMarker([first.lat, first.lon], { renderer: dots, radius: dotSize(), weight: 1, color: '#fff', fillColor: '#f97316', fillOpacity: 0.95 })
         .bindTooltip(() => popup(`${first.city}, ${first.state}`, [
           `Mile ${Math.round(first.mile_marker)}. Considered, not chosen:`,
           ...stations.slice(0, 5).map((station) => `${station.name}, $${station.price_per_gallon.toFixed(3)} a gallon`),
@@ -324,7 +325,7 @@
     const point = (place, properties) => ({
       type: 'Feature', properties, geometry: { type: 'Point', coordinates: [place.lon, place.lat] },
     });
-    // A station goes where the map draws it, on the route, so that it sits on the line elsewhere too.
+    // A fuel stop goes where the map draws it, on the route, so that it sits on the line elsewhere too.
     // Where the data has it, and how far that is from the route, go along as properties.
     const station = (place, properties) => {
       const [lat, lon] = onRoute(body, place);
@@ -366,12 +367,13 @@
           ...(stop.order <= 9 ? { 'marker-symbol': String(stop.order) } : {}),  // the symbols stop at 9
         })),
         point(body.finish, { role: 'finish', name: body.finish.name, 'marker-color': '#b91c1c' }),
-        ...passedOver.map((other) => station(other, {
+        ...passedOver.map((other) => point(other, {
           role: 'considered, not chosen',
           name: other.name,
           city: other.city,
           state: other.state,
           mile_marker: other.mile_marker,
+          miles_off_route: other.miles_off_route,
           price_per_gallon: other.price_per_gallon,
           'marker-color': '#f97316',
           'marker-size': 'small',

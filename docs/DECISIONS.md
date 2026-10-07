@@ -448,10 +448,18 @@ is visible at once.
     addresses, or route through the stops with a second routing call. I chose
     the first. It is the honest one for stations that are at exits on the
     route anyway, it costs no request, and it changes nothing in the plan.
-    Stops, the orange dots and the rings all move, so a station does not jump
-    when it becomes a stop, and the GeoJSON tab uses the same positions. The
-    API still reports the town centre and `miles_off_route`, and a stop's
-    pop-up says how far away its town is.
+    Claude first moved everything onto the line, the orange dots included, so
+    that a station would not jump when it became a stop. Seeing it, I missed
+    the dots scattered beside the route, which showed the band of country the
+    planner chooses from, and asked for them back at their towns. So the stops
+    (and the rings for the other plans' stops) are drawn on the line, the
+    stations passed over stay at their town centres, and a station shifts
+    when it becomes a stop. The GeoJSON tab uses the same positions. The API
+    still reports the town centre and `miles_off_route`, and a stop's pop-up
+    says how far away its town is. The brief asks for "a map of the route
+    along with optimal location to fuel up along the route"; it does not say
+    how a station must be placed, and its own price file is what limits the
+    precision.
 
 ### 3.16 Django Debug Toolbar for the reviewer
 
@@ -552,8 +560,8 @@ is visible at once.
 
 ## 5. How it is verified
 
-- 190 automated tests covering 95% of the Python lines, run on both SQLite and
-  PostgreSQL 17. Nineteen of them drive the page in a real browser; those run
+- 191 automated tests covering 95% of the Python lines, run on both SQLite and
+  PostgreSQL 17. Twenty of them drive the page in a real browser; those run
   where a browser is installed and are skipped in the Docker image.
 - The rate limit was exercised against the running stack: with the limit then at
   60 a minute, 65 quick requests gave 60 successes and 5 refusals with a
