@@ -4,7 +4,7 @@
   --blue: #1d4ed8; --blue-soft: #e8efff; --green: #15803d; --green-soft: #e6f4ea;
   --red: #b91c1c; --red-soft: #fdecea; --amber: #92400e; --amber-soft: #fef3c7;
   --side: min(400px, 100vw);              /* width of a side drawer */
-  --panel: clamp(240px, 45vh, 460px);     /* height of the bottom drawer's content when open */
+  --panel: max(180px, 25vh);              /* height of the bottom drawer's content when open: a quarter of the window */
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
