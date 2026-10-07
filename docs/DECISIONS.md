@@ -291,7 +291,7 @@ Smaller calls, all Claude defaults that I kept:
 | --- | --- |
 | The two counters override one request only | They are for trying things; they change nothing for anyone else |
 | The counters start from the server's current settings | So the page and the API never disagree about the defaults |
-| Rate limit raised from 60 to 120 requests a minute | The "Stops against cost" tab makes six small requests per trip, all served from cache |
+| Rate limit raised from 60 to 120 requests a minute | The "Stops against cost" tab makes four small requests when it opens and one more per step of a counter; none reaches the routing provider |
 | "Planning your route" is a plain spinner | The mockup ticked off three stages on a timer, which would have been pretend progress |
 | Everything from a response is escaped before it is shown | Station names and error messages echo data and user input |
 
@@ -376,11 +376,10 @@ is visible at once.
     50 miles to a full tank in 50-mile steps. $1 rather than a higher floor
     because most of the change in a plan happens below $5, so a floor of $5
     would leave the counter with almost nothing to show. These are limits of
-    the page only; the API still accepts any cost from $0 up. The $0 plan
-    stays in the "Stops against cost" table as the baseline the others are
-    compared with, and whatever the server is set to is always within the
-    counter's reach. A run of clicks or a spin of the wheel is sent as one
-    request, 0.3 seconds after the last change.
+    the page only; the API still accepts any cost from $0 up, and whatever the
+    server is set to is always within the counter's reach. A run of clicks or
+    a spin of the wheel is sent as one request, 0.3 seconds after the last
+    change.
 13. **A colour for each number on the dark band.** In white they all looked
     the same to me. The fuel bill is now green, the stops blue, the miles pink
     and the gallons amber, while the two counters stay white because they are
@@ -389,6 +388,17 @@ is visible at once.
     violet were nearly identical to someone red-green colour-blind. Each
     number keeps its label, so colour is never the only thing telling them
     apart.
+14. **"Stops against cost" follows the counter.** The tab used to compare a
+    fixed list of settings ($0, $1, $2, $5, $10 and $20). I asked for it to
+    show the cost I have selected with the two settings below it and the two
+    above, five plans in all. At either end of the counter's range the five
+    slide along, so there are always five, and clicking a row still selects
+    it. Two things here are Claude's: the table scrolls to keep the selected
+    row in the middle of the short drawer, since it first opened with that row
+    out of sight, and rows already fetched are kept, so a step of the counter
+    costs one extra request rather than four. The trade-off, which Claude
+    pointed out: neighbouring $1 settings often give the same plan, so the
+    five rows vary less than the old spread did.
 
 ## 4. Things testing caught
 

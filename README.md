@@ -49,9 +49,9 @@ and nothing more: every plan on screen came from `POST /api/v1/route/`.
    (cost per stop, starting fuel). Click an arrow beside one, or scroll over
    it, and the trip re-plans.
 3. Along the bottom are five tab names. Clicking one raises a panel: the fuel
-   in the tank along the trip, the fuel plan as a table, the same trip at
-   different cost-per-stop settings, the API call behind the plan, or server
-   details. Clicking it again lowers the panel and gives the map the room back.
+   in the tank along the trip, the fuel plan as a table, the same trip at the
+   two cost-per-stop settings either side of yours, the API call behind the
+   plan, or server details. Clicking it again lowers the panel and gives the map the room back.
 
 Pointing at a stop on the map, the chart or the table highlights it in the
 others. The gear button (top right) opens a drawer with the server's current

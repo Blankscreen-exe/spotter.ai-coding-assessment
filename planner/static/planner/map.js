@@ -6,7 +6,6 @@
 
   const config = JSON.parse(document.getElementById('planner-config').textContent);
   const DEFAULTS = config.defaults;  // what the server uses when a request does not say otherwise
-  const COMPARE_COSTS = [0, 1, 2, 5, 10, 20];
   const TABS = ['timeline', 'plan', 'tradeoff', 'api', 'server'];
   const EXAMPLES = [
     { label: 'Coast to coast', start: 'New York, NY', finish: 'Los Angeles, CA' },
@@ -31,7 +30,7 @@
   // A link that names a tab (…#plan) opens it on that tab.
   let tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'timeline';
   let dockOpen = TABS.includes(location.hash.slice(1));
-  const comparisons = new Map();  // trip and starting fuel -> rows for the "Stops against cost" tab
+  const comparisons = new Map();  // trip and starting fuel -> plans fetched for the "Stops against cost" tab, by cost
 
   // ---------- talking to the API ----------
 
@@ -225,23 +224,27 @@
         `<tr class="total"><td colspan="5">Total</td><td class="num">${body.summary.gallons_purchased.toFixed(1)}</td><td class="num">${money(body.summary.total_fuel_cost)}</td></tr></table>`;
     },
 
+    // Five plans: the cost per stop on the counter, with the two settings below it and the two above.
     tradeoff: (body) => {
-      const loaded = comparisons.get(comparisonKey(current));
-      if (!loaded) loadComparison(current);
-      if (!loaded || loaded.loading) return '<p class="note">Planning this trip at each cost-per-stop setting...</p>';
-      if (loaded.failed) return errorHtml(loaded.failed);
-      // The setting on screen may not be one of the standard rows (the counter goes in $1 steps).
-      const rows = loaded.rows.filter((row) => row.cost !== body.planning.stop_cost)
-        .concat([{ cost: body.planning.stop_cost, summary: body.summary }]).sort((a, b) => a.cost - b.cost);
-      const cheapest = Math.min(...rows.map((row) => row.summary.total_fuel_cost));
-      return '<p class="note">The same trip at different cost-per-stop settings. Click a row to use it.</p>' +
+      const key = comparisonKey(current), selected = body.planning.stop_cost;
+      if (!comparisons.has(key)) comparisons.set(key, { plans: new Map() });
+      const known = comparisons.get(key);
+      if (known.failed) return errorHtml(known.failed);
+      known.plans.set(selected, body.summary);  // the plan on screen is one of the five
+      const costs = comparedCosts(selected);
+      if (costs.some((cost) => !known.plans.has(cost))) loadComparison(current, costs);
+      const cheapest = Math.min(...costs.filter((cost) => known.plans.has(cost)).map((cost) => known.plans.get(cost).total_fuel_cost));
+      return '<p class="note">This trip at your cost per stop and at the two settings either side of it. Click a row to use it.</p>' +
         '<table><tr><th>Cost per stop</th><th class="num">Stops</th><th class="num">Fuel bill</th><th class="num">Over the cheapest</th></tr>' +
-        rows.map((row) => {
-          const over = row.summary.total_fuel_cost - cheapest;
-          const tag = (row.cost === 0 ? ' (cheapest possible bill)' : '') + (row.cost === DEFAULTS.stopCost ? ' (server default)' : '');
-          return `<tr class="pick ${row.cost === body.planning.stop_cost ? 'current' : ''}" data-cost="${Number(row.cost)}">
-            <td>$${Number(row.cost)}${tag}</td><td class="num">${Number(row.summary.fuel_stops)}</td>
-            <td class="num">${money(row.summary.total_fuel_cost)}</td><td class="num">${over < 0.005 ? '&ndash;' : '+' + money(over)}</td></tr>`;
+        costs.map((cost) => {
+          const summary = known.plans.get(cost);
+          const tag = (cost === selected ? ' (selected)' : '') + (cost === DEFAULTS.stopCost ? ' (server default)' : '');
+          const start = `<tr class="pick ${cost === selected ? 'current' : ''}" data-cost="${Number(cost)}"><td>$${Number(cost)}${tag}</td>`;
+          // A row still on its way keeps its place, so the table does not jump as the counter moves.
+          if (!summary) return start + '<td class="num">&hellip;</td><td class="num">&hellip;</td><td class="num">&hellip;</td></tr>';
+          const over = summary.total_fuel_cost - cheapest;
+          return start + `<td class="num">${Number(summary.fuel_stops)}</td><td class="num">${money(summary.total_fuel_cost)}</td>
+            <td class="num">${over < 0.005 ? '&ndash;' : '+' + money(over)}</td></tr>`;
         }).join('') + '</table>';
     },
 
@@ -289,6 +292,17 @@
     if (typeof content === 'string') $('panel').innerHTML = content;
     else $('panel').replaceChildren(content);
     if (tab === 'timeline') drawChart(current.body);
+    if (tab === 'tradeoff') showSelectedRow();
+  }
+
+  // The drawer is short, so the comparison scrolls inside it. The selected row is kept in the middle of
+  // what can be seen, under the column names, which stay put at the top.
+  function showSelectedRow() {
+    const panel = $('panel'), row = panel.querySelector('tr.current'), names = panel.querySelector('th');
+    if (!row) return;
+    const from = row.getBoundingClientRect().top - panel.getBoundingClientRect().top;
+    const to = names.offsetHeight + (panel.clientHeight - names.offsetHeight - row.offsetHeight) / 2;
+    panel.scrollTop += from - to;
   }
 
   // The address keeps the trip, and the tab only while the drawer is open.
@@ -296,25 +310,43 @@
     history.replaceState(null, '', location.pathname + location.search + (dockOpen ? '#' + tab : ''));
   }
 
-  // One small request per row. The route is already cached, so none of these reaches the routing provider.
-  async function loadComparison(call) {
-    const key = comparisonKey(call);
-    if (comparisons.has(key)) return;
-    comparisons.set(key, { loading: true });
-    const rows = [];
-    for (const cost of COMPARE_COSTS) {
+  // The cost per stop on screen with the two settings below it and the two above: what one or two presses of
+  // either arrow would give. At an end of the counter's range the five slide along, so there are still five.
+  function comparedCosts(selected) {
+    const reach = (direction) => {
+      const found = [];
+      for (let at = selected; found.length < 4;) {
+        const next = stepFrom(at, direction, costLimits());
+        if (next === at) break;
+        found.push(at = next);
+      }
+      return found;
+    };
+    const below = reach(-1), above = reach(1);
+    const fromBelow = Math.min(below.length, Math.max(2, 4 - above.length));
+    const fromAbove = Math.min(above.length, 4 - fromBelow);
+    return [...below.slice(0, fromBelow).reverse(), selected, ...above.slice(0, fromAbove)];
+  }
+
+  // One small request per row not fetched yet: four when the tab is first opened, then one for each step of
+  // the counter. The route is already cached, so none of these reaches the routing provider.
+  async function loadComparison(call, costs) {
+    const key = comparisonKey(call), known = comparisons.get(key);
+    if (known.loading) return;  // it shows the panel again when done, which asks for whatever is still missing
+    known.loading = true;
+    for (const cost of costs.filter((each) => !known.plans.has(each))) {
       const answer = await callApi({
         start: call.request.start, finish: call.request.finish, stop_cost: cost,
         initial_range_miles: call.body.vehicle.initial_range_miles, include_geometry: false,
       });
       if (answer.status !== 200) {
-        comparisons.set(key, { failed: answer });
-        setTimeout(() => comparisons.delete(key), 5000);  // allow a retry, for instance once a rate limit has passed
+        known.failed = answer;
+        setTimeout(() => { delete known.failed; }, 5000);  // allow a retry, for instance once a rate limit has passed
         break;
       }
-      rows.push({ cost, summary: answer.body.summary });
+      known.plans.set(cost, answer.body.summary);
     }
-    if (rows.length === COMPARE_COSTS.length) comparisons.set(key, { rows });
+    known.loading = false;
     if (tab === 'tradeoff' && current && comparisonKey(current) === key) showPanel();
   }
 
@@ -451,8 +483,15 @@
     planTimer = setTimeout(replan, 300);
   }
 
+  // Where one step from a value lands: on the next multiple of the step, and never past either end.
+  function stepFrom(value, direction, { min, max, step }) {
+    if (direction > 0 ? value >= max : value <= min) return value;
+    const next = direction > 0 ? (Math.floor(value / step) + 1) * step : (Math.ceil(value / step) - 1) * step;
+    return Math.min(max, Math.max(min, next));
+  }
+
   // A number with an arrow either side. An arrow moves it one step, and so does scrolling over it: up for
-  // more, down for less. A value from outside the limits (a link, a row of the comparison) is shown as it is.
+  // more, down for less. A value from outside the limits (from a link, say) is shown as it is.
   function counter(id, label) {
     const box = $(id), [less, more] = box.querySelectorAll('button'), out = box.querySelector('output');
     const state = { value: 0, min: 0, max: 0, step: 1 };
@@ -461,12 +500,10 @@
       less.disabled = state.value <= state.min;
       more.disabled = state.value >= state.max;
     };
-    // One step, landing on a multiple of the step and never past either end.
     const move = (direction) => {
-      const { value, min, max, step } = state;
-      if (!current || (direction > 0 ? value >= max : value <= min)) return;
-      const next = direction > 0 ? (Math.floor(value / step) + 1) * step : (Math.ceil(value / step) - 1) * step;
-      state.value = Math.min(max, Math.max(min, next));
+      const next = stepFrom(state.value, direction, state);
+      if (!current || next === state.value) return;
+      state.value = next;
       paint();
       planSoon();
     };
@@ -785,6 +822,7 @@
   new ResizeObserver(() => map.invalidateSize({ animate: false })).observe($('map'));
   let chartWidth = 0;
   new ResizeObserver(([entry]) => {
+    if (current && dockOpen && tab === 'tradeoff') showSelectedRow();  // the middle moves as the drawer slides open
     const width = entry.contentRect.width;
     if (width === chartWidth) return;  // the drawer sliding open changes only the height
     chartWidth = width;
