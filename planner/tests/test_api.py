@@ -1,26 +1,18 @@
 import json
 import re
-from pathlib import Path
 from unittest import mock
 
-import numpy as np
 from cryptography.fernet import Fernet
 from django.contrib.auth import get_user_model
-from django.contrib.staticfiles import finders
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from planner import conf
-from planner.models import FuelStation, Place, ProviderCredential, Setting
-from planner.providers import PROVIDERS, Route
-from planner.services.places import normalize
+from planner.models import ProviderCredential, Setting
 from planner.services.stations import reset_index
 
-MILES_PER_DEGREE_LON_AT_40N = 52.93
-# A road along 40N from 100W to 80W, one point every half degree: about 1,059 miles.
-ROAD = np.array([[-100.0 + step / 2, 40.0] for step in range(41)])
-ROAD_MILES = 20 * MILES_PER_DEGREE_LON_AT_40N
+from .fixtures import ROAD_MILES, create_trip_data, routing_mock
 
 
 class TripFixture(TestCase):
@@ -28,46 +20,13 @@ class TripFixture(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        def place(name, state, lon):
-            return Place.objects.create(name=name, state=state, key=normalize(name), lat=40.0, lon=lon)
-
-        place('Alpha', 'KS', -100.0)
-        place('Omega', 'OH', -80.0)
-        # (town, longitude, price): miles 159, 370, 635 and 847 along the road.
-        for number, (town, lon, price) in enumerate(
-            [('Wayne', -97.0, '3.50'), ('Brook', -93.0, '3.00'), ('Carmel', -88.0, '3.20'), ('Dover', -84.0, '2.90')],
-            start=1,
-        ):
-            FuelStation.objects.create(
-                opis_id=number,
-                name=f'{town} Truck Stop',
-                address='I-70, EXIT 1',
-                city=town,
-                state='KS',
-                price=price,
-                place=place(town, 'KS', lon),
-            )
-        FuelStation.objects.create(
-            opis_id=99,
-            name='Nowhere Fuel',
-            address='?',
-            city='Nowhere',
-            state='KS',
-            price='1.00',
-            place=None,
-        )
+        create_trip_data()
 
     def setUp(self):
         cache.clear()
         reset_index()
         self.addCleanup(reset_index)
-        patcher = mock.patch.object(
-            PROVIDERS[conf.PROVIDER_OSRM],
-            'route',
-            return_value=Route(conf.PROVIDER_OSRM, ROAD, ROAD_MILES, 16 * 3600),
-        )
-        self.route_call = patcher.start()
-        self.addCleanup(patcher.stop)
+        self.route_call = self.enterContext(routing_mock())
 
 
 class RouteApiTests(TripFixture):
@@ -311,9 +270,6 @@ class RouteMapTests(TestCase):
         )
         return json.loads(embedded.group(1))
 
-    def script(self):
-        return Path(finders.find('planner/map.js')).read_text(encoding='utf-8')
-
     def test_site_root_opens_the_page(self):
         response = self.client.get('/', {'start': 'Alpha, KS', 'finish': 'Omega, OH'})
         self.assertRedirects(
@@ -347,8 +303,6 @@ class RouteMapTests(TestCase):
             self.assertLess(counter.index('data-step="-1"'), counter.index('<output>'))
             self.assertLess(counter.index('<output>'), counter.index('data-step="1"'))
             self.assertEqual(counter.count('aria-label='), 2)
-        # Scrolling over a counter changes it, so the script has to be allowed to stop the page scrolling.
-        self.assertRegex(self.script(), r"addEventListener\('wheel',[\s\S]*?\{ passive: false \}")
 
     def test_a_link_with_a_trip_is_not_planned_on_the_server(self):
         # /map/?start=...&finish=... is what the API returns as map_url. The script reads the
@@ -374,68 +328,23 @@ class RouteMapTests(TestCase):
         self.assertLess(trip_bar.index('id="change"'), trip_bar.index('id="zoomOut"'))
         self.assertIn('id="zoomOut" aria-label="Zoom out" title="Zoom out"', trip_bar)
         self.assertIn('id="zoomIn" aria-label="Zoom in" title="Zoom in"', trip_bar)
-        self.assertIn("L.map('map', { zoomControl: false })", self.script())
 
-    def test_bottom_drawer_starts_closed_with_only_its_tab_names(self):
+    def test_bottom_drawer_is_sent_closed_with_only_its_tab_names(self):
         content = self.client.get(self.url).content.decode()
         dock = content[content.index('id="dock"') : content.index('id="onboarding"')]
         self.assertEqual(dock.count('class="tab" aria-expanded="false" aria-controls="panel"'), 5)
         self.assertIn('id="collapse" hidden', dock)
         self.assertNotIn('dock-open', content.split('<body')[1].split('>')[0])
-        styles = Path(finders.find('planner/map.css')).read_text(encoding='utf-8')
-        self.assertRegex(styles, r'#panel \{ height: 0;')
-        self.assertRegex(styles, r'body\.dock-open #panel \{ height: var\(--panel\)')
 
-    def test_tab_bar_cannot_grow_a_vertical_scrollbar(self):
-        # A tab that overlapped the line under the bar by a pixel once made the bar scroll.
-        styles = Path(finders.find('planner/map.css')).read_text(encoding='utf-8')
-        self.assertRegex(styles, r'\.tabs \{[^}]*overflow-y: hidden')
-        tab_rule = re.search(r'^\.tab \{([^}]*)\}', styles, re.MULTILINE).group(1)
-        self.assertNotIn('margin', tab_rule)
-
-    def test_settings_drawer_sits_beside_the_page_rather_than_over_it(self):
+    def test_settings_drawer_is_not_a_modal(self):
         content = self.client.get(self.url).content.decode()
-        self.assertIn('<aside class="drawer" id="settings" aria-labelledby="settingsTitle">', content)  # not a modal
+        self.assertIn('<aside class="drawer" id="settings" aria-labelledby="settingsTitle">', content)
         self.assertIn('aria-expanded="false" aria-controls="settings"', content)
-        styles = Path(finders.find('planner/map.css')).read_text(encoding='utf-8')
-        self.assertIn('body.settings-open { padding-right: var(--side); }', styles)
 
     def test_admin_button_opens_the_admin_panel(self):
         response = self.client.get(self.url)
         self.assertContains(response, f'id="openAdmin" href="{reverse("admin:index")}" target="_blank" rel="noopener"')
         self.assertEqual(reverse('admin:index'), '/admin/')
 
-    def test_map_tiles_are_requested_with_a_referer(self):
-        # OpenStreetMap serves "Access blocked" tiles to requests without a Referer,
-        # and the page's own Referrer-Policy header would otherwise withhold it.
-        self.assertEqual(self.client.get(self.url).headers['Referrer-Policy'], 'same-origin')
-        self.assertIn("referrerPolicy: 'strict-origin-when-cross-origin'", self.script())
-
-    def test_script_escapes_response_text_it_writes_as_html(self):
-        # Station names and error messages come from data and from what the user typed, and
-        # parts of the page are built as HTML strings. A bare ${...} of such text would be
-        # an injection hole, so each must be wrapped in esc(). Popups use textContent instead.
-        html_builders = (
-            self.script().split('function popup(')[0] + self.script().split('// ---------- fuel timeline')[1]
-        )
-        for text in (
-            'stop.name',
-            's.name',
-            's.city',
-            's.state',
-            'stop.city',
-            'body.start.name',
-            'body.finish.name',
-            'error.message',
-            'error.code',
-            'example.label',
-            'meta.served_from',
-            'meta.routing_provider',
-            'setting.label',
-            'setting.description',
-            'setting.key',
-            'provider.label',
-            'value.now',
-            'value.usual',
-        ):
-            self.assertNotRegex(html_builders, r'\$\{\s*' + re.escape(text) + r'\s*\}', text)
+    # What the page does with all this (opening the drawer, re-planning, escaping text from data)
+    # is tested in a real browser: see test_page.py.
