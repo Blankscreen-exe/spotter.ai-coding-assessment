@@ -89,11 +89,13 @@
   const tripLayer = L.layerGroup().addTo(map);
   const otherStops = L.layerGroup().addTo(map);  // where the neighbouring plans would stop
   // The stations the planner passed over are drawn as dots on a canvas, which copes with hundreds of them.
-  // A dot is small, so the pointer counts as on it from a few pixels away.
-  const dots = L.canvas({ padding: 0.5, tolerance: 4 });
+  // A dot is small, so the pointer counts as on it from a few pixels away. The canvas has a layer of its
+  // own, above the route line (which would otherwise cover the dots) and below the numbered stops.
+  map.createPane('stations').style.zIndex = 450;
+  const dots = L.canvas({ pane: 'stations', padding: 0.5, tolerance: 4 });
   let passedOver = [];
   // Seen from far out the dots all sit on the route line, so they shrink to a hint; closer in they grow.
-  const dotSize = () => (map.getZoom() <= 5 ? 2 : map.getZoom() <= 6 ? 2.5 : map.getZoom() <= 7 ? 3.5 : 4.5);
+  const dotSize = () => (map.getZoom() <= 5 ? 2.5 : map.getZoom() <= 7 ? 3.5 : 4.5);
   map.on('zoomend', () => passedOver.forEach((dot) => dot.setRadius(dotSize())));
   syncZoomButtons();  // now that the tile layer has told the map how far it can zoom
 
@@ -132,7 +134,7 @@
       .bindPopup(popup('Start', [body.start.name])).addTo(tripLayer);
     flag(body.finish.lat, body.finish.lon)
       .bindPopup(popup('Finish', [body.finish.name])).addTo(tripLayer);
-    // The stations the planner chose from and passed over, as grey dots, so the choice can be seen. Stations
+    // The stations the planner chose from and passed over, as orange dots, so the choice can be seen. Stations
     // are placed at their town's centre, so a town's stations share a spot: one dot for the town, listing them.
     const chosen = new Set(body.fuel_stops.map((stop) => stop.station_id));
     const towns = new Map();
@@ -144,7 +146,7 @@
     }
     passedOver = [...towns.values()].map((stations) => {
       const [first] = stations.sort((a, b) => a.price_per_gallon - b.price_per_gallon);
-      return L.circleMarker([first.lat, first.lon], { renderer: dots, radius: dotSize(), weight: 1, color: '#fff', fillColor: '#64748b', fillOpacity: 0.95 })
+      return L.circleMarker([first.lat, first.lon], { renderer: dots, radius: dotSize(), weight: 1, color: '#fff', fillColor: '#f97316', fillOpacity: 0.95 })
         .bindTooltip(() => popup(`${first.city}, ${first.state}`, [
           `Mile ${Math.round(first.mile_marker)}. Considered, not chosen:`,
           ...stations.slice(0, 5).map((station) => `${station.name}, $${station.price_per_gallon.toFixed(3)} a gallon`),
@@ -334,7 +336,7 @@
         <dt>Health</dt><dd>${health ? esc(health.status) : 'unknown'} (GET ${esc(config.healthUrl)})</dd>
         <dt>Stations loaded</dt><dd>${health && health.stations ? Number(health.stations).toLocaleString() : 'unknown'}</dd>
         <dt>This plan</dt><dd>served from ${esc(body.meta.served_from)}, ${plural(Number(body.meta.routing_api_calls), 'routing call')}, ${Number(body.meta.elapsed_ms)} ms on the server</dd>
-        <dt>Stations on this route (the grey dots)</dt><dd>${Number(body.meta.stations_considered)}</dd>
+        <dt>Stations on this route (the orange dots)</dt><dd>${Number(body.meta.stations_considered)}</dd>
         <dt>Routing provider</dt><dd>${esc(body.meta.routing_provider)}</dd>
         <dt>Vehicle</dt><dd>${Number(body.vehicle.max_range_miles)} mile range, ${Number(body.vehicle.miles_per_gallon)} miles per gallon</dd>
       </dl>

@@ -413,7 +413,8 @@ is visible at once.
     computes several routes that could be drawn more faintly. It does not: it
     asks for one route and chooses among the stations along it. Claude offered
     three things that could be drawn instead, and I picked two.
-    - *The stations it passed over.* Grey dots along the route. This needed the
+    - *The stations it passed over.* Dots along the route, grey at first and
+      orange since I asked for a colour that stands out. This needed the
       API to return them, so a request can now ask for `candidate_stations`;
       it is off by default to keep the normal response small. Stations sit at
       their town's centre, so the first version stacked several dots on one

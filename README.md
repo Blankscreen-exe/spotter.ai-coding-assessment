@@ -65,7 +65,7 @@ and nothing more: every plan on screen came from `POST /api/v1/route/`.
    plan, or server details. Clicking it again lowers the panel and gives the map the room back.
 
 Pointing at a stop on the map, the chart or the table highlights it in the
-others. The map also shows what the plan was chosen from. The grey dots along
+others. The map also shows what the plan was chosen from. The orange dots along
 the route are the towns whose stations were considered and passed over; zoom in
 and point at one for the stations there and their prices. While the third tab
 is open, rings mark where the neighbouring plans would stop instead, and
