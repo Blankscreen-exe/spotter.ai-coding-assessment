@@ -19,12 +19,14 @@
     <div class="floating" id="tools">
       <span class="pill" id="health">Checking the server</span>
       <button type="button" class="secondary icon" id="showSettings" aria-label="Server settings" title="Server settings">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-        </svg>
+        {% include 'planner/icons.html' with icon='settings' %}
       </button>
-      <a class="secondary" id="openAdmin" href="{% url 'admin:index' %}" target="_blank" rel="noopener" title="Open the admin panel in a new tab">Admin</a>
+      <a class="secondary icon" id="openAdmin" href="{% url 'admin:index' %}" target="_blank" rel="noopener" aria-label="Admin panel" title="Admin panel (opens in a new tab)">
+        {% include 'planner/icons.html' with icon='admin' %}
+      </a>
+      <button type="button" class="secondary icon" id="showAbout" aria-label="About the author" title="About the author">
+        {% include 'planner/icons.html' with icon='about' %}
+      </button>
     </div>
   </div>
 
@@ -100,6 +102,38 @@
     </header>
     <p class="note">What the server uses when a request does not say otherwise. The sliders on the page override two of these for one request only.</p>
     <form id="settingsForm" novalidate></form>
+  </aside>
+
+  <aside class="drawer" id="about" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+    <header>
+      <h2 id="aboutTitle">About the author</h2>
+      <button type="button" class="secondary" id="closeAbout">Close</button>
+    </header>
+    <div class="who">
+      <div class="avatar" aria-hidden="true">{{ author.initials }}</div>
+      <div>
+        <b class="person">{{ author.name }}</b>
+        {% if author.details %}<span class="note">{{ author.details }}</span>{% endif %}
+      </div>
+    </div>
+    {% if author.bio %}<p class="bio">{{ author.bio }}</p>{% endif %}
+    <ul class="links">
+      {% for link in author.links %}
+        <li><a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">
+          {% include 'planner/icons.html' with icon=link.kind size=20 %}
+          <span><b>{{ link.label }}</b><small>{{ link.text }}</small></span>
+        </a></li>
+      {% endfor %}
+    </ul>
+    {% if author.project.url %}
+      <h3>This project</h3>
+      <ul class="links">
+        <li><a href="{{ author.project.url }}" target="_blank" rel="noopener noreferrer">
+          {% include 'planner/icons.html' with icon='code' size=20 %}
+          <span><b>{{ author.project.label }}</b><small>github.com</small></span>
+        </a></li>
+      </ul>
+    {% endif %}
   </aside>
 
   {{ config|json_script:"planner-config" }}

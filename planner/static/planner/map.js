@@ -655,10 +655,32 @@
     if (event.target.id === 'signOut') { await send('DELETE', config.sessionUrl); signingIn = false; loadSettings(); }
     if (event.target.id === 'showSignIn') { signingIn = true; renderSettings(); $('loginName').focus(); }
   });
+  // ---------- about drawer (its content is plain markup from the server) ----------
+
+  function openAbout() {
+    $('about').classList.add('open');
+    $('shade').classList.add('open');
+    $('closeAbout').focus();
+  }
+
+  function closeAbout() {
+    $('about').classList.remove('open');
+    $('shade').classList.remove('open');
+    $('showAbout').focus();
+  }
+
+  // Whichever drawer is open, a click outside it or the Escape key closes it.
+  function closeOpenDrawer() {
+    if ($('settings').classList.contains('open')) closeSettings();
+    if ($('about').classList.contains('open')) closeAbout();
+  }
+
   $('showSettings').addEventListener('click', openSettings);
   $('closeSettings').addEventListener('click', closeSettings);
-  $('shade').addEventListener('click', closeSettings);
-  document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && $('settings').classList.contains('open')) closeSettings(); });
+  $('showAbout').addEventListener('click', openAbout);
+  $('closeAbout').addEventListener('click', closeAbout);
+  $('shade').addEventListener('click', closeOpenDrawer);
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeOpenDrawer(); });
 
   // One stop, highlighted on the map, the chart and the table together.
   let hot = null;

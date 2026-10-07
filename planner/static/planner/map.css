@@ -130,6 +130,20 @@ dl.facts dd { margin: 0; font-weight: 600; }
 .setting .amount { display: inline-flex; align-items: baseline; gap: 4px; color: var(--ink); font-weight: 600; white-space: nowrap; }
 .setting .amount input { width: 96px; text-align: right; font-weight: 600; }
 .setting select { max-width: 230px; font-weight: 600; }
+/* ---- about drawer ---- */
+.who { display: flex; align-items: center; gap: 14px; margin: 8px 0 12px; }
+.avatar { flex: none; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--blue); color: #fff; font-size: 20px; font-weight: 700; }
+.who .person { display: block; font-size: 18px; }
+.bio { font-size: 15px; margin: 0 0 14px; }
+.drawer h3 { margin: 16px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.links { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.links a { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); text-decoration: none; }
+.links a:hover { border-color: var(--blue); background: var(--blue-soft); }
+.links svg { flex: none; color: var(--blue); }
+.links b { display: block; }
+.links small { color: var(--muted); font-size: 12.5px; word-break: break-all; }
+#about { padding-bottom: 18px; }
+
 /* The API key for the selected provider, attached to the provider choice above it. */
 #keyBox:not(:empty) { margin-top: 8px; }
 .keybox { display: grid; gap: 6px; padding: 10px 12px; background: var(--soft); border-left: 3px solid var(--blue); border-radius: 0 6px 6px 0; }

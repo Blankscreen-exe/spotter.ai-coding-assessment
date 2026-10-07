@@ -55,7 +55,9 @@ Pointing at a stop on the map, the chart or the table highlights it in the
 others. The gear button (top right) opens a drawer with the server's current settings.
 Signed in with an admin account you can change them there, and store an
 OpenRouteService key; the plan on screen is then redone under the new
-settings. The Admin button beside it opens the Django admin. A link such as `/map/?start=Chicago, IL&finish=Houston, TX` opens
+settings. Beside it, the shield button opens the Django admin and the person
+button opens a drawer about the author, whose details live in
+`planner/author.py`. A link such as `/map/?start=Chicago, IL&finish=Houston, TX` opens
 straight on that trip, which is what `map_url` in an API response is.
 
 ## The API
@@ -265,7 +267,7 @@ python manage.py test                                  # SQLite
 docker compose exec web python manage.py test          # PostgreSQL
 ```
 
-151 tests, 95% line coverage of the Python code. The optimizer is checked against
+156 tests, 95% line coverage of the Python code. The optimizer is checked against
 brute force and an independent formula on random routes. The routing providers
 and Nominatim are mocked, so the suite makes no network calls, and it always
 uses a private cache.
@@ -309,6 +311,7 @@ planner/
     trip.py                puts the pieces together, caching
   management/commands/     data import, credential management
   views.py, serializers.py API, map page, health check
+  author.py                who built this, for the page's About drawer
   templates/, static/      the map page: markup, styles, and the script that calls the API
   handlers.py              one JSON shape for every API error
   throttling.py            per-client rate limit

@@ -326,6 +326,11 @@ is visible at once.
 5. **A gear icon instead of the "Server settings" label, and an Admin button
    beside it** that opens the admin panel. Claude made that open in a new tab,
    so the trip on screen is not lost.
+6. **An icon on the Admin button too, and a third icon button for an "About the
+   author" drawer** with my links and a bio of at most 120 characters. The
+   details are in `planner/author.py`. Claude filled them in from my public
+   GitHub profile (name, the first sentence of my bio, and the accounts linked
+   there) for me to correct, and a test keeps the bio within the limit.
 
 ## 4. Things testing caught
 
@@ -352,7 +357,7 @@ is visible at once.
 
 ## 5. How it is verified
 
-- 151 automated tests covering 95% of the Python lines, run on both SQLite and PostgreSQL 17.
+- 156 automated tests covering 95% of the Python lines, run on both SQLite and PostgreSQL 17.
 - The rate limit was exercised against the running stack: with the limit then at
   60 a minute, 65 quick requests gave 60 successes and 5 refusals with a
   `Retry-After` header.

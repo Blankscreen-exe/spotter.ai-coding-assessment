@@ -15,6 +15,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import conf
+from .author import author_for_page
 from .exceptions import EncryptionNotConfigured, InvalidLogin, InvalidRequest, NotAllowed, NotSignedIn
 from .models import ProviderCredential, Setting
 from .serializers import RouteRequestSerializer
@@ -206,6 +207,7 @@ def route_map(request):
     """The page people use. It plans nothing itself: its script calls the API above."""
     settings_now = conf.load_settings()
     return render(request, 'planner/map.html', {
+        'author': author_for_page(),
         'config': {
             'apiUrl': reverse('route-plan'),
             'healthUrl': reverse('health'),
