@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest import mock
 
 from cryptography.fernet import Fernet
+from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import connection
@@ -114,6 +115,44 @@ class SetProviderKeyTests(TestCase):
             with self.assertRaisesMessage(CommandError, 'No API key given'):
                 self.run_command('--from-env', 'ORS_KEY_THAT_IS_NOT_SET')
         self.assertFalse(ProviderCredential.objects.exists())
+
+
+class SeedAdminTests(TestCase):
+    def run_command(self, *args, **environment):
+        output = StringIO()
+        cleared = {'DJANGO_SUPERUSER_USERNAME': '', 'DJANGO_SUPERUSER_PASSWORD': '', 'DJANGO_SUPERUSER_EMAIL': ''}
+        with mock.patch.dict('os.environ', {**cleared, **environment}):
+            call_command('seed_admin', *args, stdout=output)
+        return output.getvalue()
+
+    @override_settings(DEBUG=True)
+    def test_demo_login_when_debug_is_on(self):
+        self.assertIn('Created admin user "admin"', self.run_command())
+        self.assertTrue(self.client.login(username='admin', password='fuelroute-demo'))
+        self.assertEqual(self.client.get('/admin/planner/setting/').status_code, 200)
+
+    def test_demo_password_is_refused_when_debug_is_off(self):
+        with self.assertRaisesMessage(CommandError, 'Set DJANGO_SUPERUSER_PASSWORD'):
+            self.run_command()
+        self.assertFalse(get_user_model().objects.exists())
+
+    def test_login_from_the_environment(self):
+        self.run_command(DJANGO_SUPERUSER_USERNAME='ops', DJANGO_SUPERUSER_PASSWORD='s3cret-pass')
+        user = get_user_model().objects.get()
+        self.assertEqual((user.username, user.is_superuser, user.is_staff), ('ops', True, True))
+        self.assertTrue(user.check_password('s3cret-pass'))
+
+    def test_existing_user_is_left_alone(self):
+        self.run_command(DJANGO_SUPERUSER_PASSWORD='first-pass')
+        output = self.run_command(DJANGO_SUPERUSER_PASSWORD='second-pass')
+        self.assertIn('already exists', output)
+        self.assertTrue(get_user_model().objects.get().check_password('first-pass'))
+
+    def test_reset_password(self):
+        self.run_command(DJANGO_SUPERUSER_PASSWORD='first-pass')
+        self.run_command('--reset-password', DJANGO_SUPERUSER_PASSWORD='second-pass')
+        self.assertEqual(get_user_model().objects.count(), 1)
+        self.assertTrue(get_user_model().objects.get().check_password('second-pass'))
 
 
 class GenerateEncryptionKeyTests(SimpleTestCase):

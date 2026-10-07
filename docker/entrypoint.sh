@@ -6,5 +6,8 @@ set -e
 python manage.py migrate --noinput
 python manage.py import_places --if-empty
 python manage.py import_stations --if-empty
+if [ -n "$DJANGO_SUPERUSER_PASSWORD" ]; then
+    python manage.py seed_admin
+fi
 
 exec "$@"

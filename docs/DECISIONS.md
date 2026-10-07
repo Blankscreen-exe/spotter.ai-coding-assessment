@@ -260,6 +260,7 @@ One option was measured and rejected: OSRM's "simplified" route comes back in
 | HTTPS settings behind `DJANGO_SECURE` | Clears Django's deploy check except two HSTS options that commit a whole domain |
 | Map page works on narrow screens, button shows progress | Found by taking screenshots: the map was squeezed to a strip at phone width |
 | Tests for the import commands, the key command, the Nominatim client | Coverage went from 85% to 94% |
+| `seed_admin`, a demo admin login for the local stack | I asked for it so the settings table can be shown in the demo; the published password is refused when debug is off |
 
 Deliberately not added, because each would be more to explain than it shows for
 a single endpoint: OpenAPI/Swagger pages, authentication, a task queue,
@@ -283,7 +284,7 @@ Kubernetes manifests, PostGIS, a JavaScript framework.
 
 ## 5. How it is verified
 
-- 114 automated tests covering 94% of lines, run on both SQLite and PostgreSQL 17.
+- 119 automated tests covering 94% of lines, run on both SQLite and PostgreSQL 17.
 - The rate limit was exercised against the running stack: 65 quick requests gave
   60 successes and 5 refusals with a `Retry-After` header.
 - The map page was checked from headless-browser screenshots at desktop and

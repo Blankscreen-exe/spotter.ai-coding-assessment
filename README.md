@@ -169,12 +169,19 @@ cross-country route is about 12 ms to match stations and 30 ms to optimise.
 ## Configuration
 
 Runtime settings are rows in the `Setting` table, editable in the Django admin
-at `/admin/`. They take effect on the next request. Create an admin user first:
+at `/admin/`. They take effect on the next request.
+
+The Docker stack creates an admin login on first start: **admin** /
+**fuelroute-demo**. For a local run, create the same one with:
 
 ```bash
-python manage.py createsuperuser                          # local
-docker compose exec web python manage.py createsuperuser  # Docker
+python manage.py seed_admin
 ```
+
+That demo password is published here, so it is only ever used on a local stack:
+`seed_admin` refuses it when `DJANGO_DEBUG` is off unless
+`DJANGO_SUPERUSER_USERNAME` and `DJANGO_SUPERUSER_PASSWORD` are set, and the
+compose file reads the same two variables.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -215,7 +222,7 @@ python manage.py test                                  # SQLite
 docker compose exec web python manage.py test          # PostgreSQL
 ```
 
-114 tests, 94% line coverage. The optimizer is checked against brute force and an
+119 tests, 94% line coverage. The optimizer is checked against brute force and an
 independent formula on random routes. The routing providers and Nominatim are
 mocked, so the suite makes no network calls, and it always uses a private cache.
 
