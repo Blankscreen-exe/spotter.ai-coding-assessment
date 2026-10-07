@@ -291,6 +291,30 @@ class RouteMapTests(TestCase):
         self.assertIn('id="zoomIn" aria-label="Zoom in" title="Zoom in"', trip_bar)
         self.assertIn("L.map('map', { zoomControl: false })", self.script())
 
+    def test_bottom_drawer_starts_closed_with_only_its_tab_names(self):
+        content = self.client.get(self.url).content.decode()
+        dock = content[content.index('id="dock"'):content.index('id="onboarding"')]
+        self.assertEqual(dock.count('class="tab" aria-expanded="false" aria-controls="panel"'), 5)
+        self.assertIn('id="collapse" hidden', dock)
+        self.assertNotIn('dock-open', content.split('<body')[1].split('>')[0])
+        styles = Path(finders.find('planner/map.css')).read_text(encoding='utf-8')
+        self.assertRegex(styles, r'#panel \{ height: 0;')
+        self.assertRegex(styles, r'body\.dock-open #panel \{ height: var\(--panel\)')
+
+    def test_tab_bar_cannot_grow_a_vertical_scrollbar(self):
+        # A tab that overlapped the line under the bar by a pixel once made the bar scroll.
+        styles = Path(finders.find('planner/map.css')).read_text(encoding='utf-8')
+        self.assertRegex(styles, r'\.tabs \{[^}]*overflow-y: hidden')
+        tab_rule = re.search(r'^\.tab \{([^}]*)\}', styles, re.MULTILINE).group(1)
+        self.assertNotIn('margin', tab_rule)
+
+    def test_settings_drawer_sits_beside_the_page_rather_than_over_it(self):
+        content = self.client.get(self.url).content.decode()
+        self.assertIn('<aside class="drawer" id="settings" aria-labelledby="settingsTitle">', content)  # not a modal
+        self.assertIn('aria-expanded="false" aria-controls="settings"', content)
+        styles = Path(finders.find('planner/map.css')).read_text(encoding='utf-8')
+        self.assertIn('body.settings-open { padding-right: var(--side); }', styles)
+
     def test_admin_button_opens_the_admin_panel(self):
         response = self.client.get(self.url)
         self.assertContains(response, f'id="openAdmin" href="{reverse("admin:index")}" target="_blank" rel="noopener"')

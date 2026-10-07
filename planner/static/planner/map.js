@@ -27,7 +27,10 @@
   let shownTrip = null;
   let sequence = 0;
   let health = null;
+  // The bottom drawer starts closed, showing only the numbers and the tab names.
+  // A link that names a tab (…#plan) opens it on that tab.
   let tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'timeline';
+  let dockOpen = TABS.includes(location.hash.slice(1));
   const comparisons = new Map();  // trip and starting fuel -> rows for the "Stops against cost" tab
 
   // ---------- talking to the API ----------
@@ -256,11 +259,23 @@
   };
 
   function showPanel() {
-    document.querySelectorAll('.tab').forEach((button) => button.classList.toggle('on', button.dataset.tab === tab));
+    document.body.classList.toggle('dock-open', dockOpen);
+    document.querySelectorAll('.tab').forEach((button) => {
+      const shown = dockOpen && button.dataset.tab === tab;
+      button.classList.toggle('on', shown);
+      button.setAttribute('aria-expanded', shown);
+    });
+    $('collapse').hidden = !dockOpen;
+    if (!dockOpen) return;  // what the panel last held stays there while it slides shut
     const content = PANELS[tab](current.body);
     if (typeof content === 'string') $('panel').innerHTML = content;
     else $('panel').replaceChildren(content);
     if (tab === 'timeline') drawChart(current.body);
+  }
+
+  // The address keeps the trip, and the tab only while the drawer is open.
+  function rememberTab() {
+    history.replaceState(null, '', location.pathname + location.search + (dockOpen ? '#' + tab : ''));
   }
 
   // One small request per row. The route is already cached, so none of these reaches the routing provider.
@@ -333,7 +348,7 @@
     showPanel();
     const query = new URLSearchParams(call.request);
     query.delete('include_geometry');
-    history.replaceState(null, '', `${location.pathname}?${query}#${tab}`);
+    history.replaceState(null, '', `${location.pathname}?${query}${dockOpen ? '#' + tab : ''}`);
   }
 
   async function replan() {
@@ -425,11 +440,20 @@
     $(id).addEventListener('change', replan);
   }
 
+  // Clicking a tab raises the drawer on it; clicking the open tab again, or the arrow, lowers it.
   $('tabs').addEventListener('click', (event) => {
-    if (!event.target.dataset.tab || !current) return;
-    tab = event.target.dataset.tab;
+    if (!current) return;
+    const picked = event.target.closest('[data-tab]');
+    if (event.target.closest('#collapse')) {
+      dockOpen = false;
+    } else if (picked) {
+      dockOpen = !(dockOpen && picked.dataset.tab === tab);
+      tab = picked.dataset.tab;
+    } else {
+      return;
+    }
     showPanel();
-    history.replaceState(null, '', `${location.pathname}${location.search}#${tab}`);
+    rememberTab();
   });
   $('panel').addEventListener('click', (event) => {
     const row = event.target.closest('tr.pick');
@@ -563,9 +587,13 @@
     renderSettings(note);
   }
 
+  // The settings drawer sits beside the page instead of covering it, so a saved
+  // change can be watched taking effect. (On a phone there is no room: it covers.)
   function openSettings() {
+    if ($('about').classList.contains('open')) closeAbout();
     $('settings').classList.add('open');
-    $('shade').classList.add('open');
+    document.body.classList.add('settings-open');
+    $('showSettings').setAttribute('aria-expanded', 'true');
     $('closeSettings').focus();
     $('settingsForm').innerHTML = '<p class="note">Reading the settings...</p>';
     loadSettings();
@@ -574,7 +602,8 @@
   function closeSettings() {
     signingIn = false;
     $('settings').classList.remove('open');
-    $('shade').classList.remove('open');
+    document.body.classList.remove('settings-open');
+    $('showSettings').setAttribute('aria-expanded', 'false');
     $('showSettings').focus();
   }
 
@@ -667,6 +696,7 @@
   // ---------- about drawer (its content is plain markup from the server) ----------
 
   function openAbout() {
+    if ($('settings').classList.contains('open')) closeSettings();
     $('about').classList.add('open');
     $('shade').classList.add('open');
     $('closeAbout').focus();
@@ -678,17 +708,18 @@
     $('showAbout').focus();
   }
 
-  // Whichever drawer is open, a click outside it or the Escape key closes it.
+  // The Escape key closes whichever side drawer is open. A click outside closes only the
+  // About drawer, which is the one that covers the page.
   function closeOpenDrawer() {
     if ($('settings').classList.contains('open')) closeSettings();
     if ($('about').classList.contains('open')) closeAbout();
   }
 
-  $('showSettings').addEventListener('click', openSettings);
+  $('showSettings').addEventListener('click', () => ($('settings').classList.contains('open') ? closeSettings() : openSettings()));
   $('closeSettings').addEventListener('click', closeSettings);
   $('showAbout').addEventListener('click', openAbout);
   $('closeAbout').addEventListener('click', closeAbout);
-  $('shade').addEventListener('click', closeOpenDrawer);
+  $('shade').addEventListener('click', closeAbout);
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeOpenDrawer(); });
 
   // One stop, highlighted on the map, the chart and the table together.
@@ -702,7 +733,16 @@
     if (order) document.querySelectorAll(`[data-order="${CSS.escape(order)}"]`).forEach((node) => node.classList.add('hot'));
   });
 
-  window.addEventListener('resize', () => { if (current && tab === 'timeline') drawChart(current.body); });
+  // The map and the chart change size when a drawer opens or closes, not only when the
+  // window does, so each watches its own box.
+  new ResizeObserver(() => map.invalidateSize({ animate: false })).observe($('map'));
+  let chartWidth = 0;
+  new ResizeObserver(([entry]) => {
+    const width = entry.contentRect.width;
+    if (width === chartWidth) return;  // the drawer sliding open changes only the height
+    chartWidth = width;
+    if (current && dockOpen && tab === 'timeline') drawChart(current.body);
+  }).observe($('panel'));
 
   // ---------- start ----------
 

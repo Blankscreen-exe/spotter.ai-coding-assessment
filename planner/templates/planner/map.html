@@ -27,7 +27,7 @@
     </div>
     <div class="floating" id="tools">
       <span class="pill" id="health">Checking the server</span>
-      <button type="button" class="secondary icon" id="showSettings" aria-label="Server settings" title="Server settings">
+      <button type="button" class="secondary icon" id="showSettings" aria-label="Server settings" title="Server settings" aria-expanded="false" aria-controls="settings">
         {% include 'planner/icons.html' with icon='settings' %}
       </button>
       <a class="secondary icon" id="openAdmin" href="{% url 'admin:index' %}" target="_blank" rel="noopener" aria-label="Admin panel" title="Admin panel (opens in a new tab)">
@@ -57,11 +57,14 @@
 
   <section id="dock">
     <nav class="tabs" id="tabs">
-      <button type="button" class="tab" data-tab="timeline">Fuel timeline</button>
-      <button type="button" class="tab" data-tab="plan">Fuel plan</button>
-      <button type="button" class="tab" data-tab="tradeoff">Stops against cost</button>
-      <button type="button" class="tab" data-tab="api">API call</button>
-      <button type="button" class="tab" data-tab="server">Server</button>
+      <button type="button" class="tab" aria-expanded="false" aria-controls="panel" data-tab="timeline">Fuel timeline</button>
+      <button type="button" class="tab" aria-expanded="false" aria-controls="panel" data-tab="plan">Fuel plan</button>
+      <button type="button" class="tab" aria-expanded="false" aria-controls="panel" data-tab="tradeoff">Stops against cost</button>
+      <button type="button" class="tab" aria-expanded="false" aria-controls="panel" data-tab="api">API call</button>
+      <button type="button" class="tab" aria-expanded="false" aria-controls="panel" data-tab="server">Server</button>
+      <button type="button" class="link" id="collapse" hidden aria-label="Hide details" title="Hide details">
+        {% include 'planner/icons.html' with icon='down' %}
+      </button>
     </nav>
     <div id="panel"></div>
   </section>
@@ -104,7 +107,7 @@
   </div>
 
   <div id="shade"></div>
-  <aside class="drawer" id="settings" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+  <aside class="drawer" id="settings" aria-labelledby="settingsTitle">
     <header>
       <h2 id="settingsTitle">Server settings</h2>
       <button type="button" class="secondary" id="closeSettings">Close</button>

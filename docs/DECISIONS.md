@@ -339,6 +339,16 @@ is visible at once.
    map library only puts its own control in a corner, so Claude replaced it
    with a minus and plus pair inside the trip bar. They sit beside "Change trip"
    whatever the trip is called, and grey out at the zoom limits.
+9. **The bottom area is a drawer, and the settings drawer sits beside the
+   page.** My idea for the bottom: show only the numbers and the tab names at
+   first, and raise the content when a tab is clicked. The open question was
+   how that lives with the side drawer. Claude laid out three ways (side
+   drawer covers everything, side drawer pushes the page aside, or only one
+   open at a time) and I chose pushing, so a setting can be saved while
+   watching the chart or table change. I agreed five details Claude proposed:
+   the panel opens to about 45% of the window; the About drawer still covers
+   and dims; a link naming a tab opens on it; Escape closes only the side
+   drawer; and on a phone the side drawer covers the full width.
 
 ## 4. Things testing caught
 
@@ -359,13 +369,20 @@ is visible at once.
   origin only. Earlier screenshots had happened to get real tiles, so the check
   that passed was not checking the right thing; this time the header a browser
   sends was measured directly.
+- **The tab bar showed a vertical scrollbar.** I spotted this one too. Each tab
+  overlapped the line under the bar by one pixel to draw its underline, and
+  that pixel counted as overflow. The underline is now drawn inside the tab.
+- **A quick browser check gave a wrong answer.** A screenshot method that
+  fast-forwards time showed the new zoom buttons doing nothing. They worked;
+  that method mishandles animation. Interactive checks now drive the browser in
+  real time.
 - **The tests were clearing the live cache.** Run inside the container they
   used the real Redis, and several tests empty the cache. The test run now
   always gets a private in-process cache.
 
 ## 5. How it is verified
 
-- 159 automated tests covering 95% of the Python lines, run on both SQLite and PostgreSQL 17.
+- 162 automated tests covering 95% of the Python lines, run on both SQLite and PostgreSQL 17.
 - The rate limit was exercised against the running stack: with the limit then at
   60 a minute, 65 quick requests gave 60 successes and 5 refusals with a
   `Retry-After` header.

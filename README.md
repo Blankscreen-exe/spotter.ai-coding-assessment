@@ -47,12 +47,15 @@ and nothing more: every plan on screen came from `POST /api/v1/route/`.
    four example trips, one of which is an error on purpose.
 2. It then shows the route and stops on a map, the fuel bill, and two sliders
    (cost per stop, starting fuel) that re-plan when released.
-3. A panel underneath has five tabs: the fuel in the tank along the trip, the
-   fuel plan as a table, the same trip at different cost-per-stop settings, the
-   API call behind the plan, and server details.
+3. Along the bottom are five tab names. Clicking one raises a panel: the fuel
+   in the tank along the trip, the fuel plan as a table, the same trip at
+   different cost-per-stop settings, the API call behind the plan, or server
+   details. Clicking it again lowers the panel and gives the map the room back.
 
 Pointing at a stop on the map, the chart or the table highlights it in the
-others. The gear button (top right) opens a drawer with the server's current settings.
+others. The gear button (top right) opens a drawer with the server's current
+settings. It sits beside the page instead of covering it, so a saved change
+can be watched taking effect.
 Signed in with an admin account you can change them there, and store an
 OpenRouteService key; the plan on screen is then redone under the new
 settings. Beside it, the shield button opens the Django admin and the person
@@ -267,7 +270,7 @@ python manage.py test                                  # SQLite
 docker compose exec web python manage.py test          # PostgreSQL
 ```
 
-159 tests, 95% line coverage of the Python code. The optimizer is checked against
+162 tests, 95% line coverage of the Python code. The optimizer is checked against
 brute force and an independent formula on random routes. The routing providers
 and Nominatim are mocked, so the suite makes no network calls, and it always
 uses a private cache.
