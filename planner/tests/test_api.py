@@ -127,6 +127,28 @@ class RouteApiTests(TripFixture):
     def test_geometry_can_be_left_out(self):
         self.assertNotIn('route', self.plan(include_geometry=False).json())
 
+    def test_stations_it_chose_from_are_listed_only_when_asked_for(self):
+        self.assertNotIn('candidate_stations', self.plan().json())  # the default response stays lean
+        body = self.plan(include_candidates=True).json()
+        stations = body['candidate_stations']
+        self.assertEqual(len(stations), body['meta']['stations_considered'])
+        self.assertEqual([s['city'] for s in stations], ['Wayne', 'Brook', 'Carmel', 'Dover'])  # in route order
+        self.assertEqual(
+            sorted(stations[0]),
+            ['address', 'city', 'lat', 'lon', 'mile_marker', 'miles_off_route', 'name', 'price_per_gallon',
+             'state', 'station_id'],
+        )
+        # The chosen stops are among them, described the same way.
+        for stop in body['fuel_stops']:
+            self.assertIn({key: stop[key] for key in stations[0]}, stations)
+
+    def test_stations_it_chose_from_also_come_with_a_cached_plan_and_by_get(self):
+        first = self.plan(include_candidates=True).json()
+        again = self.client.get(self.url, {'start': 'Alpha, KS', 'finish': 'Omega, OH', 'include_candidates': 'true'}).json()
+        self.assertEqual(again['meta']['served_from'], 'plan cache')
+        self.assertEqual(again['candidate_stations'], first['candidate_stations'])
+        self.assertNotIn('include_', again['map_url'])  # the link to the map carries the trip, not response options
+
     def test_initial_range_changes_the_plan(self):
         body = self.plan(initial_range_miles=200).json()
         self.assertEqual(body['fuel_stops'][0]['city'], 'Wayne')

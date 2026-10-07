@@ -87,6 +87,7 @@ query string.
 | `stop_cost` | no | Dollars one extra stop is worth avoiding. Default 5; 0 gives the lowest possible fuel bill |
 | `provider` | no | `osrm` or `openrouteservice`. Default: the `routing.provider` setting |
 | `include_geometry` | no | `false` leaves the route line out of the response. Default `true` |
+| `include_candidates` | no | `true` adds `candidate_stations`: every station the planner chose from. Default `false` |
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/route/ \
@@ -146,6 +147,10 @@ curl -X POST http://localhost:8000/api/v1/route/ \
   default and arrives empty, so `gallons_purchased` is less than `gallons_used`.
 - `route` is GeoJSON and can be drawn by any map client. `map_url` opens the
   same plan on an interactive map.
+- `candidate_stations`, when asked for, lists every station within the corridor
+  in route order, the chosen ones included, with the same fields as a fuel stop
+  up to its price. `meta.stations_considered` is how many there are. It is left
+  out by default because it is large: about 70 KB for a cross-country trip.
 - `meta.served_from` is `routing provider`, `route cache` or `plan cache`, and
   `meta.routing_api_calls` is 1 or 0 accordingly.
 

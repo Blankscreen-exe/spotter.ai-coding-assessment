@@ -83,6 +83,23 @@ def _thin(coordinates):
     return np.round(coordinates[keep], 5).tolist()
 
 
+def _located(on_route_station):
+    """What the response says about a station and where it sits on the route."""
+    station = on_route_station.station
+    return {
+        'station_id': station['opis_id'],
+        'name': station['name'],
+        'address': station['address'],
+        'city': station['city'],
+        'state': station['state'],
+        'lat': station['lat'],
+        'lon': station['lon'],
+        'mile_marker': round(on_route_station.mile, 1),
+        'miles_off_route': round(on_route_station.off_route_miles, 1),
+        'price_per_gallon': round(station['price'], 3),
+    }
+
+
 def _build_plan(route, range_miles, mpg, corridor_miles, stop_cost, initial_range_miles):
     """Everything in the response that depends only on the trip and the settings."""
     on_route = stations_along(route.coordinates, route.distance_miles, corridor_miles)
@@ -97,23 +114,12 @@ def _build_plan(route, range_miles, mpg, corridor_miles, stop_cost, initial_rang
 
     stops, total_cost, total_gallons = [], Decimal('0'), 0.0
     for order, purchase in enumerate(purchases, start=1):
-        on_route_station = purchase.candidate.ref
-        station = on_route_station.station
-        cost = _money(purchase.gallons * station['price'])
+        cost = _money(purchase.gallons * purchase.candidate.price)
         total_cost += cost
         total_gallons += purchase.gallons
         stops.append({
             'order': order,
-            'station_id': station['opis_id'],
-            'name': station['name'],
-            'address': station['address'],
-            'city': station['city'],
-            'state': station['state'],
-            'lat': station['lat'],
-            'lon': station['lon'],
-            'mile_marker': round(on_route_station.mile, 1),
-            'miles_off_route': round(on_route_station.off_route_miles, 1),
-            'price_per_gallon': round(station['price'], 3),
+            **_located(purchase.candidate.ref),
             'gallons_on_arrival': round(purchase.arrival_range_miles / mpg, 2),
             'gallons_purchased': round(purchase.gallons, 2),
             'cost': float(cost),
@@ -139,6 +145,8 @@ def _build_plan(route, range_miles, mpg, corridor_miles, stop_cost, initial_rang
             'corridor_miles': corridor_miles,
         },
         'fuel_stops': stops,
+        # Every station the planner chose from, the chosen ones included, in route order.
+        'candidate_stations': [_located(s) for s in sorted(on_route, key=lambda s: s.mile)],
         'route': {
             'type': 'Feature',
             'properties': {'provider': route.provider},
@@ -149,7 +157,7 @@ def _build_plan(route, range_miles, mpg, corridor_miles, stop_cost, initial_rang
 
 
 def plan_trip(start_text, finish_text, provider_name=None, initial_range_miles=None, stop_cost=None,
-              include_geometry=True):
+              include_geometry=True, include_candidates=False):
     started = time.perf_counter()
     config = conf.load_settings()
     range_miles, mpg, corridor_miles = config[conf.RANGE_MILES], config[conf.MPG], config[conf.CORRIDOR_MILES]
@@ -165,7 +173,7 @@ def plan_trip(start_text, finish_text, provider_name=None, initial_range_miles=N
     provider = get_provider(provider_name or config[conf.ROUTING_PROVIDER])
 
     parameters = (range_miles, mpg, corridor_miles, stop_cost, initial_range_miles)
-    plan_key = _trip_key('plan', provider, start, finish, *parameters)
+    plan_key = _trip_key('plan2', provider, start, finish, *parameters)  # 2: plans carry their candidates
     built = _cache_get(plan_key)
     if built is not None:
         external_calls, served_from = 0, FROM_PLAN_CACHE
@@ -183,6 +191,8 @@ def plan_trip(start_text, finish_text, provider_name=None, initial_range_miles=N
         'planning': built['planning'],
         'fuel_stops': built['fuel_stops'],
     }
+    if include_candidates:
+        plan['candidate_stations'] = built['candidate_stations']
     if include_geometry:
         plan['route'] = built['route']
     plan['meta'] = {

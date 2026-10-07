@@ -54,8 +54,9 @@ class RoutePlanView(APIView):
             initial_range_miles=data.get('initial_range_miles'),
             stop_cost=data.get('stop_cost'),
             include_geometry=data['include_geometry'],
+            include_candidates=data['include_candidates'],
         )
-        query = urlencode({key: value for key, value in data.items() if key != 'include_geometry'})
+        query = urlencode({key: value for key, value in data.items() if not key.startswith('include_')})
         plan['map_url'] = request.build_absolute_uri(f'{reverse("route-map")}?{query}')
         return Response(plan)
 

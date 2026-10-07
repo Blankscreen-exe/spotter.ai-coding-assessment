@@ -10,3 +10,4 @@ class RouteRequestSerializer(serializers.Serializer):
     initial_range_miles = serializers.FloatField(min_value=0, required=False)
     stop_cost = serializers.FloatField(min_value=0, required=False)
     include_geometry = serializers.BooleanField(required=False, default=True)
+    include_candidates = serializers.BooleanField(required=False, default=False)

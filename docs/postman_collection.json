@@ -48,6 +48,18 @@
       }
     },
     {
+      "name": "With the stations it chose from",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{base_url}}/api/v1/route/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Chicago, IL\",\n  \"finish\": \"Houston, TX\",\n  \"include_geometry\": false,\n  \"include_candidates\": true\n}"
+        }
+      }
+    },
+    {
       "name": "Cheapest possible fuel bill (stop_cost 0)",
       "request": {
         "method": "POST",
