@@ -83,6 +83,7 @@ class SummarySerializer(serializers.Serializer):
     total_fuel_cost = serializers.FloatField(source='total_cost')
     gallons_purchased = Rounded(2)
     gallons_used = Rounded(2)
+    fuel_used_cost = serializers.FloatField(allow_null=True)
     currency = serializers.SerializerMethodField()
 
     def get_fuel_stops(self, plan):

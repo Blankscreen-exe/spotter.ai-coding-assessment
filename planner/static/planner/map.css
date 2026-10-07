@@ -81,7 +81,7 @@ body.comparing .ghost.in-plan { border-color: var(--blue); background: var(--blu
 #strip .money b { font-size: 24px; display: block; line-height: 1.1; }
 #strip .fact b { font-size: 17px; display: block; line-height: 1.2; }
 #strip .money span, #strip .fact span { color: var(--band-muted); font-size: 12px; }
-#strip .money b { color: var(--kpi-cost); }
+#strip .money b, #strip .allfuel b { color: var(--kpi-cost); }
 #strip .stops b { color: var(--kpi-stops); }
 #strip .miles b { color: var(--kpi-miles); }
 #strip .gallons b { color: var(--kpi-gallons); }

@@ -72,6 +72,19 @@
       }
     },
     {
+      "name": "A short trip (the starting fuel covers it)",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{base_url}}/api/v1/route/",
+        "description": "No stops and total_fuel_cost 0, because the vehicle starts full. fuel_used_cost is what the fuel burned would cost.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Dallas, TX\",\n  \"finish\": \"Austin, TX\",\n  \"include_geometry\": false\n}"
+        }
+      }
+    },
+    {
       "name": "Starting with a quarter tank",
       "request": {
         "method": "POST",

@@ -108,6 +108,23 @@ class TripPlan:
         return self.distance_miles / self.mpg
 
     @property
+    def fuel_used_cost(self) -> Decimal | None:
+        """What all the fuel burned would cost, the fuel the vehicle set off with included.
+
+        total_cost is the fuel bought on the way, which is nothing at all on a
+        trip the starting fuel covers. This prices every gallon burned at what
+        the plan pays per gallon on average or, when it buys none, at the
+        cheapest station along the route. None if the route passes no station.
+        """
+        if self.stops:
+            price = float(self.total_cost) / self.gallons_purchased
+        elif self.candidates:
+            price = min(on_route.station.price for on_route in self.candidates)
+        else:
+            return None
+        return _money(self.gallons_used * price)
+
+    @property
     def duration_hours(self) -> float:
         return self.duration_seconds / 3600
 

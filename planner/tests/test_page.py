@@ -155,6 +155,13 @@ class MapPageTests(PageTestCase):
         expect(self.page.locator('.tab.on')).to_have_text('Fuel plan')
         expect(self.page.locator('#panel tr.stoprow')).to_have_count(2)
 
+    def test_the_band_gives_the_fuel_bought_and_the_cost_of_all_the_fuel_used(self):
+        self.open_trip()
+        bought = float(self.page.locator('#sumCost').inner_text().lstrip('$'))
+        in_all = float(self.page.locator('#sumAll').inner_text().lstrip('$'))
+        self.assertGreater(bought, 0)
+        self.assertGreater(in_all, bought)  # the trip starts on a full tank, and that fuel is counted too
+
     def test_a_link_that_names_a_routing_provider_keeps_to_it(self):
         self.open_trip(TRIP + '&provider=osrm')
         with self.page.expect_response(lambda response: '/api/v1/route/' in response.url) as answered:

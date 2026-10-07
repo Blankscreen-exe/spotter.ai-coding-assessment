@@ -42,6 +42,8 @@
 
   <section id="strip" aria-live="polite">
     <div class="money"><b id="sumCost"></b><span>fuel on the way</span></div>
+    {# The same trip with the fuel it set off with paid for too, so a trip one tank covers does not read as free. #}
+    <div class="fact allfuel" title="Every gallon burned, the starting fuel included, at this plan's price per gallon"><b id="sumAll"></b><span>all fuel used</span></div>
     <div class="fact stops"><b id="sumStops"></b><span>fuel stops</span></div>
     <div class="fact miles"><b id="sumMiles"></b><span>miles</span></div>
     <div class="fact gallons"><b id="sumGallons"></b><span>gallons bought</span></div>

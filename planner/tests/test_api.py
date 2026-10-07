@@ -14,7 +14,7 @@ from django.urls import reverse
 
 from planner import conf
 from planner.exceptions import RoutingProviderError
-from planner.models import ProviderCredential, Setting
+from planner.models import FuelStation, ProviderCredential, Setting
 from planner.providers import PROVIDERS
 from planner.services import trip
 from planner.services.places import Location
@@ -61,6 +61,26 @@ class RouteApiTests(TripFixture):
         # Starts full, arrives empty: buys exactly the fuel the tank could not hold.
         self.assertAlmostEqual(body['summary']['gallons_purchased'], (ROAD_MILES - 500) / 10, places=1)
         self.assertNotIn('Nowhere Fuel', [stop['name'] for stop in stops])
+
+    def test_the_cost_of_all_the_fuel_used_counts_the_starting_fuel(self):
+        summary = self.plan().json()['summary']
+        # Every gallon burned, at what this plan pays for a gallon on average.
+        paid_per_gallon = summary['total_fuel_cost'] / summary['gallons_purchased']
+        self.assertAlmostEqual(summary['fuel_used_cost'], summary['gallons_used'] * paid_per_gallon, places=1)
+        self.assertGreater(summary['fuel_used_cost'], summary['total_fuel_cost'])
+
+    def test_a_trip_the_starting_fuel_covers_is_free_on_the_way_but_not_in_all(self):
+        Setting.objects.filter(key=conf.RANGE_MILES).update(value='1200')
+        summary = self.plan().json()['summary']
+        self.assertEqual((summary['fuel_stops'], summary['total_fuel_cost']), (0, 0.0))
+        # Nothing was bought, so the fuel burned is priced at the cheapest station on the route: $2.90.
+        self.assertEqual(summary['fuel_used_cost'], round(ROAD_MILES / 10 * 2.90, 2))
+
+    def test_with_no_station_on_the_route_that_cost_cannot_be_given(self):
+        Setting.objects.filter(key=conf.RANGE_MILES).update(value='1200')
+        FuelStation.objects.all().delete()
+        summary = self.plan().json()['summary']
+        self.assertEqual((summary['total_fuel_cost'], summary['fuel_used_cost']), (0.0, None))
 
     def test_picks_the_cheap_stations(self):
         stops = self.plan(stop_cost=0).json()['fuel_stops']

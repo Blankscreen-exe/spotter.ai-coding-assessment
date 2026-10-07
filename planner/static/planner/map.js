@@ -348,6 +348,7 @@
             duration_hours: body.summary.duration_hours,
             fuel_stops: body.summary.fuel_stops,
             total_fuel_cost: body.summary.total_fuel_cost,
+            fuel_used_cost: body.summary.fuel_used_cost,
             stroke: '#1d4ed8',
             'stroke-width': 4,
           },
@@ -602,6 +603,9 @@
     document.body.classList.remove('empty');
     $('tripName').innerHTML = `${esc(body.start.name)} <span class="arrow">&rarr;</span> ${esc(body.finish.name)}`;
     $('sumCost').textContent = money(body.summary.total_fuel_cost);
+    const allFuel = body.summary.fuel_used_cost;  // null when the route passes no station to price it by
+    $('sumAll').textContent = allFuel === null ? '' : money(allFuel);
+    $('sumAll').parentElement.hidden = allFuel === null;
     $('sumStops').textContent = body.summary.fuel_stops;
     $('sumMiles').textContent = Math.round(body.summary.distance_miles).toLocaleString();
     $('sumGallons').textContent = body.summary.gallons_purchased.toFixed(1);
