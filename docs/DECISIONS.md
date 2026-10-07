@@ -361,6 +361,11 @@ is visible at once.
     page exists to give, so it sits on dark navy, the tab names sit on a light
     grey bar, and the open tab is white like the content it belongs to. The
     switcher was removed once I had picked.
+11. **Mark the finish with a chequered flag.** I asked for a race flag at the
+    end of the route and whether it would be the emoji or a drawing. Claude
+    drew it as a small SVG: the emoji looks different on every operating
+    system, and it has no exact point to stand on, whereas the foot of the
+    drawn pole sits on the destination itself at every zoom level.
 
 ## 4. Things testing caught
 

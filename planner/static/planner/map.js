@@ -93,6 +93,21 @@
     return L.marker([lat, lon], { icon: L.divIcon({ className: '', html, iconSize: [size, size], iconAnchor: [size / 2, size / 2] }) });
   }
 
+  // The finish is a chequered flag. It is drawn here rather than typed as the emoji, which looks different on
+  // every system and has no exact point to stand on: the foot of this pole is the destination itself.
+  const FLAG = `<svg class="flag" viewBox="0 0 30 32" width="30" height="32" aria-hidden="true">
+    <path d="M5 3v26" stroke="#fff" stroke-width="5.5" stroke-linecap="round"/>
+    <rect x="5.5" y="2.5" width="23" height="18" rx="2" fill="#fff"/>
+    <path d="M7 4h5v5h-5zM17 4h5v5h-5zM12 9h5v5h-5zM22 9h5v5h-5zM7 14h5v5h-5zM17 14h5v5h-5z" fill="currentColor"/>
+    <rect x="7" y="4" width="20" height="15" fill="none" stroke="currentColor"/>
+    <path d="M5 3v26" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+    <circle class="foot" cx="5" cy="29" r="3" stroke="#fff" stroke-width="1.5"/>
+  </svg>`;
+
+  function flag(lat, lon) {
+    return L.marker([lat, lon], { icon: L.divIcon({ className: '', html: FLAG, iconSize: [30, 32], iconAnchor: [5, 29], popupAnchor: [0, -28] }) });
+  }
+
   function popup(title, lines) {
     const box = document.createElement('div');
     const head = document.createElement('b');
@@ -107,7 +122,7 @@
     const line = L.geoJSON(body.route, { style: { color: '#1d4ed8', weight: 4 } }).addTo(tripLayer);
     pin(body.start.lat, body.start.lon, '<div class="pin end start" style="width:18px;height:18px"></div>', 18)
       .bindPopup(popup('Start', [body.start.name])).addTo(tripLayer);
-    pin(body.finish.lat, body.finish.lon, '<div class="pin end finish" style="width:18px;height:18px"></div>', 18)
+    flag(body.finish.lat, body.finish.lon)
       .bindPopup(popup('Finish', [body.finish.name])).addTo(tripLayer);
     for (const stop of body.fuel_stops) {
       const order = Number(stop.order);
