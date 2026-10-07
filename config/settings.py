@@ -173,8 +173,8 @@ REST_FRAMEWORK = {
     'EXCEPTION_HANDLER': 'planner.handlers.api_exception_handler',
 }
 
-# Requests per client on the route endpoint, e.g. "60/min". Empty disables it.
-API_RATE_LIMIT = os.environ.get('API_RATE_LIMIT', '60/min')
+# Requests per client on the route endpoint, e.g. "120/min". Empty disables it.
+API_RATE_LIMIT = os.environ.get('API_RATE_LIMIT', '120/min')
 
 # Redis when REDIS_URL is set, so every worker shares one route cache;
 # otherwise a per-process cache that needs no service. The test suite clears

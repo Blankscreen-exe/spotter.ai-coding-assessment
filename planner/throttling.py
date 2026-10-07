@@ -11,7 +11,7 @@ class RouteRateThrottle(AnonRateThrottle):
 
     The API is open and every new trip costs a call to a free public routing
     server, so one client should not be able to spend that on everyone's behalf.
-    The rate comes from API_RATE_LIMIT ("60/min"); empty switches it off.
+    The rate comes from API_RATE_LIMIT ("120/min"); empty switches it off.
     """
 
     def get_rate(self):
