@@ -5,6 +5,7 @@ from django.test import TestCase, override_settings
 
 from planner import conf
 from planner.models import ProviderCredential, Setting
+from planner.services import server_settings
 
 KEY_A = Fernet.generate_key().decode()
 KEY_B = Fernet.generate_key().decode()
@@ -59,13 +60,13 @@ class SettingTests(TestCase):
     def test_load_settings_parses_values(self):
         Setting.objects.filter(key=conf.CORRIDOR_MILES).update(value='7.5')
         Setting.objects.filter(key=conf.ROUTING_PROVIDER).update(value='openrouteservice')
-        loaded = conf.load_settings()
+        loaded = server_settings.load()
         self.assertEqual(loaded[conf.CORRIDOR_MILES], 7.5)
         self.assertEqual(loaded[conf.ROUTING_PROVIDER], conf.PROVIDER_ORS)
 
     def test_missing_row_falls_back_to_the_default(self):
         Setting.objects.all().delete()
-        self.assertEqual(conf.load_settings()[conf.RANGE_MILES], 500.0)
+        self.assertEqual(server_settings.load()[conf.RANGE_MILES], 500.0)
 
     def test_invalid_values_are_rejected(self):
         for key, value in [(conf.ROUTING_PROVIDER, 'google'), (conf.MPG, '0'), (conf.STOP_COST, '-1')]:

@@ -1,7 +1,8 @@
-"""Runtime settings backed by the Setting table.
+"""Which runtime settings exist: their names, defaults and how a value is checked.
 
 Every setting has a code default here, so the app runs on an empty table; a row
-in the table overrides the default without a deploy.
+in the Setting table overrides the default without a deploy. Reading and
+writing that table is the job of services/server_settings.py.
 """
 
 import math
@@ -95,13 +96,3 @@ def to_stored(value):
     """A parsed value as the text kept in the Setting table: 8.0 is stored as "8"."""
     return f'{value:g}' if isinstance(value, float) else str(value)
 
-
-def load_settings():
-    """All settings as parsed values, read with a single query."""
-    from .models import Setting
-
-    stored = dict(Setting.objects.values_list('key', 'value'))
-    return {
-        key: definition.parse(stored.get(key, definition.default))
-        for key, definition in DEFINITIONS.items()
-    }

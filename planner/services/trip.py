@@ -18,6 +18,7 @@ from django.conf import settings
 from django.core.cache import cache
 
 from .. import conf
+from . import server_settings
 from ..exceptions import InvalidRequest
 from ..providers import get_provider
 from .optimizer import Candidate, plan_fuel_stops
@@ -159,7 +160,7 @@ def _build_plan(route, range_miles, mpg, corridor_miles, stop_cost, initial_rang
 def plan_trip(start_text, finish_text, provider_name=None, initial_range_miles=None, stop_cost=None,
               include_geometry=True, include_candidates=False):
     started = time.perf_counter()
-    config = conf.load_settings()
+    config = server_settings.load()
     range_miles, mpg, corridor_miles = config[conf.RANGE_MILES], config[conf.MPG], config[conf.CORRIDOR_MILES]
     if initial_range_miles is None:
         initial_range_miles = range_miles

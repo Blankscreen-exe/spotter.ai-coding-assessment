@@ -5,6 +5,7 @@ from unittest import mock
 
 import numpy as np
 from cryptography.fernet import Fernet
+from django.contrib.auth import get_user_model
 from django.contrib.staticfiles import finders
 from django.core.cache import cache
 from django.test import TestCase, override_settings
@@ -244,9 +245,16 @@ class SettingsApiTests(TestCase):
         self.assertNotIn('api_key', response.content.decode())
 
     def test_a_visitor_cannot_write(self):
-        # Saving is PATCH and needs a signed-in account (see test_settings_api); nothing else writes.
+        # Saving is PATCH and needs a signed-in account (see test_settings_api). A visitor is told
+        # to sign in whatever the method, before learning which methods exist.
         body = {'settings': {conf.STOP_COST: 0}}
-        self.assertEqual(self.client.patch(self.url, body, content_type='application/json').status_code, 401)
+        for method in (self.client.patch, self.client.post, self.client.put, self.client.delete):
+            self.assertEqual(method(self.url, body, content_type='application/json').status_code, 401)
+        self.assertEqual(Setting.objects.get(key=conf.STOP_COST).value, '5')
+
+    def test_patch_is_the_only_way_to_write(self):
+        self.client.force_login(get_user_model().objects.create_superuser('boss', password=None))
+        body = {'settings': {conf.STOP_COST: 0}}
         for method in (self.client.post, self.client.put, self.client.delete):
             self.assertEqual(method(self.url, body, content_type='application/json').status_code, 405)
         self.assertEqual(Setting.objects.get(key=conf.STOP_COST).value, '5')

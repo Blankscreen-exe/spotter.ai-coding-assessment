@@ -8,8 +8,9 @@ from django.db import connection
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
-from planner import conf, views
+from planner import conf
 from planner.models import ProviderCredential, Setting
+from planner.services import server_settings
 
 FAST_HASHER = ['django.contrib.auth.hashers.MD5PasswordHasher']
 SETTINGS_URL, SESSION_URL = reverse('settings'), reverse('session')
@@ -31,7 +32,7 @@ class SettingsEditingTests(TestCase):
 
     def setUp(self):
         cache.clear()
-        self.audit = self.enterContext(mock.patch.object(views.logger, 'info'))
+        self.audit = self.enterContext(mock.patch.object(server_settings.logger, 'info'))
 
     def value(self, key):
         return Setting.objects.get(key=key).value
@@ -84,7 +85,7 @@ class SettingsEditingTests(TestCase):
         self.assertEqual((self.value(conf.STOP_COST), self.value(conf.MPG), self.value(conf.RANGE_MILES)), ('8', '12.5', '400'))
         returned = {setting['key']: setting['value'] for setting in response.json()['settings']}
         self.assertEqual((returned[conf.STOP_COST], returned[conf.MPG]), (8.0, 12.5))
-        self.assertEqual(conf.load_settings()[conf.RANGE_MILES], 400.0)
+        self.assertEqual(server_settings.load()[conf.RANGE_MILES], 400.0)
 
     def test_a_setting_whose_row_is_missing_is_created(self):
         Setting.objects.filter(key=conf.MPG).delete()
@@ -177,7 +178,6 @@ class SessionTests(TestCase):
 
     def setUp(self):
         cache.clear()
-        self.enterContext(mock.patch.object(views.logger, 'info'))
 
     def sign_in(self, password='admin-pass', client=None, **extra):
         return (client or self.client).post(

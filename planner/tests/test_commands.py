@@ -13,6 +13,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 
 from planner import conf
 from planner.models import FuelStation, Place, ProviderCredential, Setting
+from planner.services import server_settings
 
 GAZETTEER = """USPS|GEOID|GEOIDFQ|ANSICODE|NAME|LSAD|FUNCSTAT|ALAND|AWATER|ALAND_SQMI|AWATER_SQMI|INTPTLAT|INTPTLONG
 AL|0100124|x|1|Abbeville city|25|A|1|1|15.543|0.042|31.565164|-85.259165
@@ -108,7 +109,7 @@ class SetProviderKeyTests(TestCase):
     def test_activate_makes_the_provider_the_default(self):
         with mock.patch('getpass.getpass', return_value='typed-key'):
             self.run_command('--activate')
-        self.assertEqual(conf.load_settings()[conf.ROUTING_PROVIDER], conf.PROVIDER_ORS)
+        self.assertEqual(server_settings.load()[conf.ROUTING_PROVIDER], conf.PROVIDER_ORS)
 
     def test_empty_key_is_refused(self):
         with mock.patch.dict('os.environ', {}, clear=False):

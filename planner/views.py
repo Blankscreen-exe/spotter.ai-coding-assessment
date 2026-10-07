@@ -1,29 +1,31 @@
-import logging
 from urllib.parse import urlencode
 
 from django.contrib.auth import authenticate, login, logout
-from django.core.exceptions import ImproperlyConfigured
-from django.db import DatabaseError, connection, transaction
+from django.db import DatabaseError, connection
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
-from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework.authentication import SessionAuthentication
-from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import conf
+from .authentication import CsrfCheckedSessionAuthentication
 from .author import author_for_page
-from .exceptions import EncryptionNotConfigured, InvalidLogin, InvalidRequest, NotAllowed, NotSignedIn
-from .models import ProviderCredential, Setting
-from .serializers import RouteRequestSerializer
+from .exceptions import InvalidLogin
+from .permissions import CanChangeSettings
+from .serializers import (
+    EditorSerializer,
+    RouteRequestSerializer,
+    ServerSettingsSerializer,
+    SettingsChangeSerializer,
+    SignInSerializer,
+)
+from .services import server_settings
 from .services.stations import get_index
 from .services.trip import plan_trip
 from .throttling import LoginRateThrottle, RouteRateThrottle
-
-logger = logging.getLogger(__name__)
 
 
 class RoutePlanView(APIView):
@@ -61,17 +63,6 @@ class RoutePlanView(APIView):
         return Response(plan)
 
 
-def _editor(user):
-    """Who is asking, and what they may change."""
-    signed_in = bool(user and user.is_authenticated)
-    return {
-        'signed_in': signed_in,
-        'username': user.get_username() if signed_in else None,
-        'can_edit': signed_in and user.has_perm('planner.change_setting'),
-        'can_set_keys': signed_in and user.has_perm('planner.change_providercredential'),
-    }
-
-
 class SettingsView(APIView):
     """What the server uses when a request does not say otherwise.
 
@@ -83,130 +74,47 @@ class SettingsView(APIView):
     # The route endpoint takes no credentials at all. This one accepts the same
     # session cookie as the admin, and with it Django's CSRF check on every write.
     authentication_classes = [SessionAuthentication]
+    permission_classes = [CanChangeSettings]
 
     def get(self, request):
-        return Response(self._describe(request))
+        return Response(ServerSettingsSerializer(server_settings.describe(), context={'request': request}).data)
 
     def patch(self, request):
-        editor = _editor(request.user)
-        if not editor['signed_in']:
-            raise NotSignedIn('Sign in to change the server settings.')
-        if not editor['can_edit']:
-            raise NotAllowed('This account may not change the server settings.')
-        body = request.data if isinstance(request.data, dict) else {}
-        changes, keys = body.get('settings') or {}, body.get('provider_keys') or {}
-        if not isinstance(changes, dict) or not isinstance(keys, dict) or not (changes or keys):
-            raise InvalidRequest('Send {"settings": {...}} and/or {"provider_keys": {...}} with at least one change.')
-
-        problems, parsed = {}, {}
-        for key, raw in changes.items():
-            definition = conf.DEFINITIONS.get(key)
-            if definition is None:
-                problems[key] = ['Unknown setting.']
-                continue
-            try:
-                parsed[key] = definition.parse(raw)
-            except ValueError as exc:
-                problems[key] = [f'{definition.label} {exc}.']
-        for provider, secret in keys.items():
-            if provider not in conf.PROVIDERS_NEEDING_A_KEY:
-                problems[f'provider_keys.{provider}'] = ['This provider does not take an API key.']
-            elif not isinstance(secret, str) or not secret.strip():
-                problems[f'provider_keys.{provider}'] = ['The API key is empty.']
-            elif not editor['can_set_keys']:
-                raise NotAllowed('This account may not store provider API keys.')
-        # Switching to a provider that has no key would break every request after it.
-        wanted = parsed.get(conf.ROUTING_PROVIDER)
-        if (wanted in conf.PROVIDERS_NEEDING_A_KEY and wanted not in keys
-                and not ProviderCredential.objects.filter(provider=wanted).exists()):
-            problems[conf.ROUTING_PROVIDER] = ['Store an API key for this provider before switching to it.']
-        if problems:
-            raise ValidationError(problems)
-
-        try:
-            with transaction.atomic():
-                for provider, secret in keys.items():
-                    # Written without reading the old key back, so a key that can no longer be
-                    # decrypted (the encryption key was replaced) can still be overwritten.
-                    replaced = ProviderCredential.objects.filter(provider=provider).update(
-                        api_key=secret.strip(), updated_at=timezone.now()
-                    )
-                    if not replaced:
-                        ProviderCredential.objects.create(provider=provider, api_key=secret.strip())
-                for key, value in parsed.items():
-                    Setting.objects.update_or_create(key=key, defaults={'value': conf.to_stored(value)})
-        except ImproperlyConfigured:
-            raise EncryptionNotConfigured(
-                'An API key cannot be stored until the server has an encryption key. '
-                'Set CREDENTIALS_ENCRYPTION_KEYS (see the README) and restart.'
-            )
-        logger.info('Settings changed by %s: %s', editor['username'], ', '.join(
-            [f'{key}={conf.to_stored(value)}' for key, value in sorted(parsed.items())]
-            + [f'{provider} API key' for provider in sorted(keys)]
-        ) or 'nothing')
-        return Response(self._describe(request))
-
-    def _describe(self, request):
-        current = conf.load_settings()
-        with_a_key = set(ProviderCredential.objects.values_list('provider', flat=True))
-        return {
-            'settings': [
-                {
-                    'key': key,
-                    'label': conf.DEFINITIONS[key].label,
-                    'value': current[key],
-                    'default': conf.DEFINITIONS[key].parse(conf.DEFINITIONS[key].default),
-                    'unit': conf.DEFINITIONS[key].unit,
-                    'description': conf.DEFINITIONS[key].help_text,
-                }
-                for key in conf.DISPLAY_ORDER
-            ],
-            'providers': [
-                {
-                    'name': name,
-                    'label': label,
-                    'active': name == current[conf.ROUTING_PROVIDER],
-                    'needs_key': name in conf.PROVIDERS_NEEDING_A_KEY,
-                    'has_key': name in with_a_key,
-                    'key_page': conf.PROVIDER_KEY_PAGES.get(name),
-                }
-                for name, label in conf.PROVIDER_CHOICES
-            ],
-            'editor': _editor(request.user),
-        }
+        change = SettingsChangeSerializer(data=request.data, context={'request': request})
+        change.is_valid(raise_exception=True)
+        change.save()
+        return self.get(request)
 
 
 class SessionView(APIView):
     """Sign in and out from the page, with the same accounts and session as the admin."""
 
-    authentication_classes = [SessionAuthentication]
+    authentication_classes = [CsrfCheckedSessionAuthentication]
 
     def get_throttles(self):
         return [LoginRateThrottle()] if self.request.method == 'POST' else []
 
     def get(self, request):
-        return Response(_editor(request.user))
+        return Response(EditorSerializer(request.user).data)
 
     def post(self, request):
-        # DRF checks the CSRF token only once someone is signed in; signing in needs it too.
-        SessionAuthentication().enforce_csrf(request)
-        user = authenticate(
-            request._request, username=str(request.data.get('username', '')), password=str(request.data.get('password', ''))
-        )
+        credentials = SignInSerializer(data=request.data)
+        credentials.is_valid(raise_exception=True)
+        user = authenticate(request, **credentials.validated_data)
         if user is None:
             raise InvalidLogin('That username and password do not match an account.')
-        login(request._request, user)
-        return Response(_editor(user))
+        login(request, user)
+        return Response(EditorSerializer(user).data)
 
     def delete(self, request):
-        logout(request._request)
-        return Response(_editor(None))
+        logout(request)
+        return Response(EditorSerializer(request.user).data)
 
 
 @ensure_csrf_cookie  # the page's script needs the token to sign in and to save settings
 def route_map(request):
     """The page people use. It plans nothing itself: its script calls the API above."""
-    settings_now = conf.load_settings()
+    settings_now = server_settings.load()
     return render(request, 'planner/map.html', {
         'author': author_for_page(),
         'config': {

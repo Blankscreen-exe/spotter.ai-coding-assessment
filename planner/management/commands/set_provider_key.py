@@ -4,7 +4,7 @@ import os
 from django.core.management.base import BaseCommand, CommandError
 
 from planner import conf
-from planner.models import ProviderCredential, Setting
+from planner.services import server_settings
 
 
 class Command(BaseCommand):
@@ -28,12 +28,9 @@ class Command(BaseCommand):
         if not api_key:
             raise CommandError('No API key given.')
 
-        ProviderCredential.objects.update_or_create(
-            provider=options['provider'], defaults={'api_key': api_key}
-        )
+        # The same call the API makes, so there is one way to store a key and the change is logged.
+        activate = {conf.ROUTING_PROVIDER: options['provider']} if options['activate'] else {}
+        server_settings.change(activate, {options['provider']: api_key}, changed_by='the set_provider_key command')
         self.stdout.write(self.style.SUCCESS(f'Stored encrypted key for {options["provider"]}.'))
         if options['activate']:
-            Setting.objects.update_or_create(
-                key=conf.ROUTING_PROVIDER, defaults={'value': options['provider']}
-            )
             self.stdout.write(self.style.SUCCESS(f'routing.provider is now {options["provider"]}.'))
