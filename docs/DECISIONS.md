@@ -353,6 +353,14 @@ is visible at once.
    from 45% of the window to 25%, then to about 16%, so the map keeps roughly
    70% of the screen. The tables scroll, which I accepted, and the chart drops
    its place-name labels at that height to keep the fuel line readable.
+10. **Make the pieces of the bottom area look different from each other.** The
+    numbers, the tab names and the content were all white, so they blended.
+    Claude put three themes on the live page behind a temporary switcher (a
+    tinted tab bar, separate cards on grey, and a dark band for the numbers)
+    and recommended the dark band. I chose it: the fuel bill is the answer the
+    page exists to give, so it sits on dark navy, the tab names sit on a light
+    grey bar, and the open tab is white like the content it belongs to. The
+    switcher was removed once I had picked.
 
 ## 4. Things testing caught
 

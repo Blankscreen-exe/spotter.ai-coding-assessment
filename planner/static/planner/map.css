@@ -3,6 +3,8 @@
   --ink: #1f2933; --muted: #52606d; --line: #d9dee3; --soft: #f3f5f7;
   --blue: #1d4ed8; --blue-soft: #e8efff; --green: #15803d; --green-soft: #e6f4ea;
   --red: #b91c1c; --red-soft: #fdecea; --amber: #92400e; --amber-soft: #fef3c7;
+  --band: #0f172a; --band-ink: #fff; --band-muted: #cbd5e1; --band-accent: #60a5fa;   /* the dark band the numbers sit on */
+  --bar: #e9eef3; --bar-ink: #3e4c59; --bar-hover: #dde5ec; --bar-edge: #cbd5df;       /* the light bar the tab names sit on */
   --side: min(400px, 100vw);              /* width of a side drawer */
   --panel: clamp(130px, 16vh, 180px);     /* height of the bottom drawer's content when open: kept small, tables scroll */
 }
@@ -62,34 +64,38 @@ button { font: inherit; cursor: pointer; }
 .pin.start { background: var(--green); }
 .pin.finish { background: var(--red); }
 
-/* ---- summary numbers and sliders ---- */
-#strip { display: flex; align-items: center; gap: 8px 26px; flex-wrap: wrap; padding: 10px 16px; background: #fff;
-         border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+/* ---- summary numbers and sliders: a dark band, so the answer stands apart from the map above
+   and the details below ---- */
+#strip { display: flex; align-items: center; gap: 8px 26px; flex-wrap: wrap; padding: 10px 16px;
+         background: var(--band); color: var(--band-ink); }
 #strip .money b { font-size: 24px; display: block; line-height: 1.1; }
 #strip .fact b { font-size: 17px; display: block; line-height: 1.2; }
-#strip .money span, #strip .fact span { color: var(--muted); font-size: 12px; }
-#strip .knob { display: grid; gap: 3px; width: 210px; font-size: 12px; color: var(--muted); }
+#strip .money span, #strip .fact span { color: var(--band-muted); font-size: 12px; }
+#strip .knob { display: grid; gap: 3px; width: 210px; font-size: 12px; color: var(--band-muted); }
 .range-head { display: flex; justify-content: space-between; align-items: baseline; }
 .range-head output { color: var(--ink); font-weight: 600; font-size: 13px; }
+#strip .range-head output { color: var(--band-ink); }
 input[type=range] { width: 100%; margin: 2px 0 0; accent-color: var(--blue); }
-#strip .say { flex-basis: 100%; color: var(--muted); font-size: 13px; }
+#strip input[type=range] { accent-color: var(--band-accent); }
+#strip .say { flex-basis: 100%; color: var(--band-muted); font-size: 13px; }
 #strip .say .error { margin: 0; color: var(--ink); }
 #strip.busy .money b { opacity: .35; }
 
 /* ---- tabbed panel ---- */
 #dock { min-height: 0; background: #fff; }
 /* On a narrow screen the tab names scroll sideways by swipe; the bar itself never shows a scrollbar. */
-.tabs { display: flex; align-items: stretch; gap: 2px; padding: 0 12px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.tabs { display: flex; align-items: stretch; padding: 0 8px; background: var(--bar); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
-.tab { border: 0; background: none; padding: 11px 14px; color: var(--muted); white-space: nowrap; }
-.tab:hover { color: var(--ink); }
-/* The underline is drawn inside the tab, so nothing overflows the bar (an overflow there shows a scrollbar). */
-.tab.on { color: var(--blue); font-weight: 600; box-shadow: inset 0 -3px 0 var(--blue); }
-#collapse { margin-left: auto; display: inline-grid; place-items: center; padding: 0 10px; }
+.tab { border: 0; border-left: 1px solid transparent; border-right: 1px solid transparent; background: none; padding: 10px 16px; color: var(--bar-ink); white-space: nowrap; }
+.tab:hover { color: var(--ink); background: var(--bar-hover); }
+/* The open tab is white, like the panel it belongs to. Its blue line is drawn inside the tab, so nothing
+   overflows the bar (an overflow there shows a scrollbar). */
+.tab.on, .tab.on:hover { background: #fff; color: var(--blue); font-weight: 600; border-color: var(--bar-edge); box-shadow: inset 0 3px 0 var(--blue); }
+#collapse { margin-left: auto; display: inline-grid; place-items: center; padding: 0 10px; color: var(--bar-ink); }
 #collapse:hover { color: var(--blue); }
-/* Closed, the panel has no height at all; the line above it is a shadow so that it adds none. */
-#panel { height: 0; overflow: hidden; padding: 0 16px; transition: height .22s ease, padding .22s ease; }
-body.dock-open #panel { height: var(--panel); overflow: auto; padding: 8px 16px 10px; box-shadow: inset 0 1px 0 var(--line); }
+/* Closed, the panel has no height at all. */
+#panel { height: 0; overflow: hidden; padding: 0 16px; background: #fff; transition: height .22s ease, padding .22s ease; }
+body.dock-open #panel { height: var(--panel); overflow: auto; padding: 8px 16px 10px; }
 #panel table { border-collapse: collapse; width: 100%; }
 #panel th, #panel td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); }
 #panel th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; position: sticky; top: -8px; background: #fff; }
