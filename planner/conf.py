@@ -46,6 +46,23 @@ def _non_negative_float(raw):
     return value
 
 
+def _positive_up_to(limit):
+    def parse(raw):
+        value = _positive_float(raw)
+        if value > limit:
+            raise ValueError(f'must be {limit:g} or less')
+        return value
+
+    return parse
+
+
+# The widest the corridor may be set. Choosing the stops takes time that grows with
+# the square of the number of stations in it: 0.04 s for a cross-country trip at
+# 5 miles, 0.16 s at 25, over a second at 100. Past 25 miles a station is also hard
+# to call "on the route", since the detour to reach it is not counted.
+MAX_CORRIDOR_MILES = 25
+
+
 def _provider(raw):
     value = str(raw).strip().lower()
     if value not in dict(PROVIDER_CHOICES):
@@ -75,8 +92,8 @@ DEFINITIONS = {
     ),
     CORRIDOR_MILES: Definition(
         '5',
-        _positive_float,
-        'How far from the route line a station may be and still count as on the route.',
+        _positive_up_to(MAX_CORRIDOR_MILES),
+        f'How far from the route line a station may be and still count as on the route. {MAX_CORRIDOR_MILES} at most.',
         label='Station corridor',
         unit='miles',
     ),

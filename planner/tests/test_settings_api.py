@@ -117,6 +117,16 @@ class SettingsEditingTests(TestCase):
         ]:
             self.assertEqual(patch(self.client, {'settings': {key: bad}}).status_code, 400, f'{key}={bad}')
 
+    def test_corridor_has_a_ceiling(self):
+        # Past it, choosing the stops slows down sharply, and a station is hardly on the route.
+        self.client.force_login(self.admin)
+        response = patch(self.client, {'settings': {conf.CORRIDOR_MILES: 26}})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()['error']['fields'][conf.CORRIDOR_MILES], ['Station corridor must be 25 or less.']
+        )
+        self.assertEqual(patch(self.client, {'settings': {conf.CORRIDOR_MILES: 25}}).status_code, 200)
+
     def test_empty_change_is_refused(self):
         self.client.force_login(self.admin)
         for body in ({}, {'settings': {}}, {'settings': 'x'}, []):
