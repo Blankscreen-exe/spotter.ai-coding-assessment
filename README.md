@@ -1,40 +1,48 @@
 # Fuel route planner
 
-A Django API that takes a start and finish in the USA and returns the driving
-route, the cheapest places to refuel along it, and the total fuel cost, for a
-vehicle with a 500 mile range that does 10 miles per gallon.
+A Django API that takes a start and a finish in the USA and returns the driving
+route, where to stop for fuel along it, and what the fuel costs, for a vehicle
+with a 500 mile range that does 10 miles per gallon.
 
-- One call to a free routing API per request (OSRM by default), none on a repeat.
-- Fuel stops are chosen by an exact optimizer, not a heuristic.
-- All 6,626 US stations in the supplied price file are used.
+## The brief, point by point
 
-How and why it was built this way is in [docs/DECISIONS.md](docs/DECISIONS.md).
+| The brief asks for | How it is met | Where it shows |
+| --- | --- | --- |
+| An API that takes a start and a finish within the USA | `POST /api/v1/route/` with `"City, ST"` or `"lat,lon"` | [The API](#the-api) |
+| A map of the route | The route as GeoJSON in the response, and a link to a page that draws it | `route`, `map_url` |
+| Optimal places to fuel up, by cost, within a 500 mile range | An exact optimizer over every station in the price file that lies along the route. It minimises the fuel bill plus $5 for each stop, so the plan is not fourteen small top-ups; `stop_cost: 0` gives the lowest possible bill | `fuel_stops` |
+| Total money spent on fuel at 10 mpg | The fuel bought on the way, and beside it the cost of all the fuel burned | `summary.total_fuel_cost`, `summary.fuel_used_cost` |
+| The supplied fuel price file | All 6,626 US stations in it are loaded and used | `data/` |
+| A free map and routing API | The public OSRM server, on OpenStreetMap data | `meta.routing_provider` |
+| Latest stable Django | Django 6.1.2 | `requirements.txt` |
+| Quick results | A new cross-country trip in 0.3 to 0.9 s, nearly all of it the routing call. A repeat in about 10 ms | [Performance](#performance) |
+| One call to the routing API is ideal | One call for a new trip, none for a repeat | `meta.routing_api_calls` |
 
-## Run it
-
-### With Docker (PostgreSQL + Redis)
+### Check it in two minutes
 
 ```bash
 docker compose up --build
+curl -X POST http://localhost:8000/api/v1/route/ \
+  -H "Content-Type: application/json" \
+  -d '{"start": "New York, NY", "finish": "Los Angeles, CA", "include_geometry": false}'
 ```
 
-The first start runs the migrations and loads the reference data, which takes a
-few seconds. Then open http://localhost:8000/.
+The answer is 2,810 miles, seven fuel stops and about $710 of fuel, with
+`"routing_api_calls": 1` under `meta`. Send it again and that becomes 0. Leave
+out `include_geometry` to get the route line, and open `map_url` to see the
+plan on a map. The same requests are in a Postman collection,
+[docs/postman_collection.json](docs/postman_collection.json), and the reasoning
+behind the design is in [docs/DECISIONS.md](docs/DECISIONS.md).
 
-This stack starts with [Django Debug Toolbar](https://django-debug-toolbar.readthedocs.io/)
-switched on: the green tab on the right edge of every page. Click it to see the
-SQL queries, cache calls and timing behind a request. On the map page it
-follows the API calls the page makes, so after planning a trip the panels
-describe that call, and its History panel lists every request with a Switch
-button. The toolbar adds roughly 25 to 30 ms to each request. To run without it:
+## Run it
 
-```bash
-DJANGO_DEBUG_TOOLBAR=false docker compose up     # or put that line in .env
-```
+**With Docker** (PostgreSQL and Redis): `docker compose up --build`, then
+http://localhost:8000/. The first start runs the migrations and loads the
+reference data, which takes about twenty seconds. The stack is published to
+this machine only.
 
-### Without Docker (SQLite)
-
-Developed and tested on Python 3.14. Django 6.1 needs 3.12 or newer.
+**Without Docker** (SQLite, no services, no environment variables). Developed
+and tested on Python 3.14; Django 6.1 needs 3.12 or newer.
 
 ```bash
 python -m venv .venv
@@ -45,47 +53,6 @@ python manage.py import_places    # US towns from the Census Gazetteer
 python manage.py import_stations  # fuel stations from the price file
 python manage.py runserver
 ```
-
-No environment variables are needed for this path. `.env.example` lists the
-optional ones; `DJANGO_DEBUG_TOOLBAR=true` gives this run the same toolbar.
-
-## The page
-
-`/map/` is the quickest way to try everything. It is a client of the API below
-and nothing more: every plan on screen came from `POST /api/v1/route/`.
-
-1. It asks "Where are you right now?" and "Where are you headed?", or offers
-   four example trips, one of which is an error on purpose.
-2. It then shows the route and stops on a map, the fuel bill, and two counters
-   (cost per stop, starting fuel). Click an arrow beside one, or scroll over
-   it, and the trip re-plans.
-3. Along the bottom are six tab names. Clicking one raises a panel: the fuel
-   in the tank along the trip, the fuel plan as a table, the same trip at the
-   two cost-per-stop settings either side of yours, the plan as GeoJSON, the
-   API call behind the plan, or server details. Clicking it again lowers the
-   panel and gives the map the room back.
-
-The GeoJSON tab holds the route, its two ends and the fuel stops as one
-FeatureCollection, with a Copy button, for pasting into
-[geojson.io](https://geojson.io/) or any other map tool. A tick box adds the
-stations that were passed over.
-
-Pointing at a stop on the map, the chart or the table highlights it in the
-others. The map also shows what the plan was chosen from. The orange dots along
-the route are the towns whose stations were considered and passed over; zoom in
-and point at one for the stations there and their prices. While the third tab
-is open, rings mark where the neighbouring plans would stop instead, and
-pointing at a row of its table picks out that row's plan on the map.
-
-The gear button (top right) opens a drawer with the server's current
-settings. It sits beside the page instead of covering it, so a saved change
-can be watched taking effect.
-Signed in with an admin account you can change them there, and store an
-OpenRouteService key; the plan on screen is then redone under the new
-settings. Beside it, the shield button opens the Django admin and the person
-button opens a drawer with a note from the author and links, kept in
-`planner/author.py`. A link such as `/map/?start=Chicago, IL&finish=Houston, TX` opens
-straight on that trip, which is what `map_url` in an API response is.
 
 ## The API
 
@@ -101,108 +68,64 @@ query string.
 | `include_geometry` | no | `false` leaves the route line out of the response. Default `true` |
 | `include_candidates` | no | `true` adds `candidate_stations`: every station the planner chose from. Default `false` |
 
-```bash
-curl -X POST http://localhost:8000/api/v1/route/ \
-  -H "Content-Type: application/json" \
-  -d '{"start": "Chicago, IL", "finish": "Houston, TX"}'
-```
+The response for `{"start": "Chicago, IL", "finish": "Houston, TX"}`, with the
+second stop and the route line shortened:
 
 ```json
 {
   "start": {"query": "Chicago, IL", "name": "Chicago, IL", "lat": 41.837045, "lon": -87.684939},
   "finish": {"query": "Houston, TX", "name": "Houston, TX", "lat": 29.785743, "lon": -95.388806},
   "summary": {
-    "distance_miles": 1083.1,
-    "duration_hours": 19.89,
-    "fuel_stops": 2,
-    "total_fuel_cost": 170.02,
-    "gallons_purchased": 58.31,
-    "gallons_used": 108.31,
-    "currency": "USD"
+    "distance_miles": 1083.1, "duration_hours": 19.89, "fuel_stops": 2,
+    "total_fuel_cost": 170.02, "gallons_purchased": 58.31,
+    "gallons_used": 108.31, "fuel_used_cost": 315.81, "currency": "USD"
   },
   "vehicle": {"max_range_miles": 500.0, "miles_per_gallon": 10.0, "initial_range_miles": 500.0},
   "planning": {"stop_cost": 5.0, "corridor_miles": 5.0},
   "fuel_stops": [
     {
-      "order": 1,
-      "station_id": 66643,
-      "name": "DEERFIELD TRAVEL CENTER",
-      "address": "I-55, EXIT 8",
-      "city": "Steele",
-      "state": "MO",
-      "lat": 36.09479,
-      "lon": -89.862102,
-      "mile_marker": 448.6,
-      "miles_off_route": 2.9,
-      "price_per_gallon": 2.976,
-      "gallons_on_arrival": 5.14,
-      "gallons_purchased": 28.84,
-      "cost": 85.8
+      "order": 1, "station_id": 66643, "name": "DEERFIELD TRAVEL CENTER", "address": "I-55, EXIT 8",
+      "city": "Steele", "state": "MO", "lat": 36.09479, "lon": -89.862102,
+      "mile_marker": 448.6, "miles_off_route": 2.9, "price_per_gallon": 2.976,
+      "gallons_on_arrival": 5.14, "gallons_purchased": 28.84, "cost": 85.8
     },
     {"order": 2, "name": "Quiktrip #7900", "city": "Texarkana", "state": "TX", "mile_marker": 788.4, "cost": 84.22}
   ],
   "route": {"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[-87.68494, 41.83705]]}},
   "meta": {
-    "routing_provider": "osrm",
-    "routing_api_calls": 1,
-    "served_from": "routing provider",
-    "stations_considered": 158,
-    "elapsed_ms": 334.2
+    "routing_provider": "osrm", "routing_api_calls": 1, "served_from": "routing provider",
+    "stations_considered": 158, "elapsed_ms": 254.0
   },
   "map_url": "http://localhost:8000/map/?start=Chicago%2C+IL&finish=Houston%2C+TX"
 }
 ```
 
-(The second stop and the route line are shortened here.)
-
 - `total_fuel_cost` is the fuel bought on the way. The vehicle starts full by
-  default and arrives empty, so `gallons_purchased` is less than `gallons_used`.
-- `route` is GeoJSON and can be drawn by any map client. `map_url` opens the
-  same plan on an interactive map.
-- `candidate_stations`, when asked for, lists every station within the corridor
-  in route order, the chosen ones included, with the same fields as a fuel stop
-  up to its price. `meta.stations_considered` is how many there are. It is left
-  out by default because it is large: 70 to 85 KB for a cross-country trip.
+  default, so a trip under 500 miles buys nothing and this is 0.
+- `fuel_used_cost` counts the starting fuel too: every gallon burned, at the
+  plan's average price per gallon, or at the cheapest station on the route when
+  nothing is bought. It is `null` only if the route passes no station at all.
+- `route` is GeoJSON, at most 3,000 points. `map_url` opens the same plan on an
+  interactive map.
 - `meta.served_from` is `routing provider`, `route cache` or `plan cache`, and
   `meta.routing_api_calls` is 1 or 0 accordingly.
 
-Errors all have the shape `{"error": {"code": "...", "message": "..."}}`:
+Every response from the endpoint is JSON, errors included. An error is
+`{"error": {"code": "...", "message": "..."}}`:
 
 | Status | `code` | When |
 | --- | --- | --- |
 | 400 | `invalid_request` | A field is missing or malformed (`fields` lists them) |
+| 400 | `parse_error` | The body is not valid JSON |
 | 400 | `location_not_found` | A place cannot be resolved, or its name is ambiguous without a state |
+| 405 | `method_not_allowed` | Anything but GET or POST |
+| 415 | `unsupported_media_type` | A body that is not sent as `application/json` |
 | 422 | `route_not_found` | No driving route exists between the two points |
 | 422 | `no_feasible_fuel_plan` | A stretch of the route has no station within range |
 | 429 | `throttled` | More than 120 requests a minute from one client (`Retry-After` says when to retry) |
 | 500 | `internal_error` | Anything unexpected; details go to the server log, not the response |
 | 502 | `routing_provider_error` | The routing API failed or timed out |
-| 503 | `routing_provider_not_configured` | The chosen provider has no API key |
-
-`GET /healthz/` returns 200 once the database answers and the station data is
-loaded, and 503 otherwise. The Docker stack uses it as the container health check.
-
-`GET /api/v1/settings/` returns what the server uses when a request does not
-say otherwise: each setting's value, default and description, and for each
-routing provider whether it is in use and whether an API key is stored (never
-the key itself). Anyone may read it.
-
-`PATCH /api/v1/settings/` changes settings and stores provider keys:
-
-```json
-{"settings": {"stops.cost_per_stop": 8, "vehicle.mpg": 12}, "provider_keys": {"openrouteservice": "..."}}
-```
-
-Because settings apply to every client, this needs a signed-in account with
-permission to change them, and Django's CSRF token in an `X-CSRFToken` header.
-Every value is validated and nothing is saved unless all of it is valid; the
-server will not switch to a provider that has no key. `POST /api/v1/session/`
-with a username and password signs in (the same accounts and session as the
-admin, limited to 10 attempts a minute), and `DELETE` signs out. The route
-endpoint itself takes no credentials.
-
-A Postman collection with these requests is in
-[docs/postman_collection.json](docs/postman_collection.json).
+| 503 | `routing_provider_not_configured` | The chosen provider has no usable API key |
 
 ## How it works
 
@@ -216,14 +139,12 @@ A Postman collection with these requests is in
    Stations within 5 miles count.
 4. **Choose the stops.** Minimise the fuel bill plus a fixed cost per stop, with
    a dynamic programme over (station, fuel on arrival). With a stop cost of 0 a
-   greedy look-ahead gives the cheapest possible bill. See
-   `planner/services/optimizer.py`.
+   greedy look-ahead gives the cheapest possible bill. Both are checked against
+   brute force on random routes. See `planner/services/optimizer.py`.
 5. **Cache.** Two things are kept for an hour (in Redis, or in-process without
    it): the route made ready for planning, which is its line thinned for
    drawing plus the stations matched to it, and the stops chosen under each set
-   of settings. A repeat reads both in one round trip and makes no routing
-   call. If several requests for the same new trip arrive together, one calls
-   the provider and the rest wait for its answer.
+   of settings. A repeat reads both in one round trip and makes no routing call.
 
 The price file has no coordinates. Each station is placed at the centre of its
 town: 6,313 from the Census file, and the 313 whose towns the Census does not
@@ -232,189 +153,139 @@ list from a one-off Nominatim lookup whose results are committed in
 
 ### Performance
 
-Measured on a laptop against the public OSRM server, with the debug toolbar
-off; these vary from run to run.
+Measured on a laptop against the public OSRM server, through the view with
+gzip, with the debug toolbar off. The routing call varies from run to run.
 
-| | First request | Repeat |
-| --- | --- | --- |
-| New York to Los Angeles (2,810 mi) | about 680 ms | about 18 ms |
-| Chicago to Houston (1,083 mi) | about 330 ms | about 10 ms |
-
-Nearly all of a first request is the routing call. Local work on a
-cross-country route is about 15 ms to match stations and 37 ms to optimise.
-
-In the debug toolbar, a plan is three SQL queries taking about 2 ms together:
-the settings, and one indexed lookup each for the start and the finish. The
-stations are matched in memory, so they cost no query.
-
-### Complexity and limits
-
-Measured on New York to Los Angeles: 2,810 miles, 349 stations within 5 miles
-of the route, at most 140 of them within one tank of each other.
-
-| Step | Time | Memory | Measured |
+| | First request | Repeat | Response, gzipped |
 | --- | --- | --- | --- |
-| Match stations to the route | stations near the route × route miles | the same, for a moment | 15 ms, 18 MB |
-| Choose stops, no stop cost (greedy) | n × w | n | 0.2 ms |
-| Choose stops, with a stop cost (dynamic programme) | n × w × log w | n × w | 37 ms |
+| New York to Los Angeles (2,810 mi) | 0.3 to 0.9 s | about 10 ms | 24 KB, or 1 KB without the route line |
+| Chicago to Houston (1,083 mi) | about 0.25 s | about 10 ms | 22 KB, or 1 KB |
 
-n is the number of stations on the route and w the number within one tank of
-each other. On synthetic data, doubling the trip length doubled the dynamic
-programme's time, and doubling the station density quadrupled it, as that
-predicts.
+A plan is three SQL queries taking about 2 ms together: the settings, and one
+indexed lookup each for the start and the finish. The stations are matched in
+memory, so they cost no query.
 
-What bounds it:
+On New York to Los Angeles there are n = 349 stations on the route and at most
+w = 140 within one tank of each other. Matching the stations takes 15 ms and
+choosing the stops 37 ms. The dynamic programme's time grows as n × w × log w
+and its memory as n × w; the greedy, used when stops are free, is n × w and
+takes 0.2 ms. What bounds it:
 
-- **Stations per route.** The corridor setting cannot be raised past 25 miles.
-  At 5 miles choosing the stops takes 0.04 s; at 25, 0.16 s; at 100 it would be
-  over a second.
-- **Cache size.** A trip occupies about 110 KB for its route and 1 to 2 KB per
-  plan. The compose stack caps Redis at 256 MB and lets it drop its least
-  recently used entries, so it cannot grow without limit. A lost entry costs one
-  routing call, nothing else.
-- **Routing calls.** One for a new trip, none for a repeat, and one in total for
-  a burst of identical new requests. Changing the corridor setting costs each
-  trip one more call, because the route as fetched is not kept.
-- **Requests.** 120 a minute per client on the route endpoint.
-
-## Configuration
-
-Runtime settings are rows in the `Setting` table. Change them in the page's
-settings drawer (the gear button) or in the Django admin at `/admin/`; either
-way they take effect on the next request.
-
-The Docker stack creates an admin login on first start: **admin** /
-**fuelroute-demo**. For a local run, create the same one with:
-
-```bash
-python manage.py seed_admin
-```
-
-That demo password is published here, so it is only ever used on a local stack:
-`seed_admin` refuses it when `DJANGO_DEBUG` is off unless
-`DJANGO_SUPERUSER_USERNAME` and `DJANGO_SUPERUSER_PASSWORD` are set, and the
-compose file reads the same two variables.
-
-| Key | Default | Meaning |
-| --- | --- | --- |
-| `routing.provider` | `osrm` | `osrm` or `openrouteservice` |
-| `stops.cost_per_stop` | `5` | Dollars one extra stop is worth avoiding |
-| `stations.corridor_miles` | `5` | How far from the route a station may be (25 at most) |
-| `vehicle.range_miles` | `500` | Distance on a full tank |
-| `vehicle.mpg` | `10` | Fuel economy |
-
-Deployment settings come from the environment; `.env.example` lists them all.
-The ones that matter beyond a local run:
-
-| Variable | Meaning |
-| --- | --- |
-| `DATABASE_URL`, `REDIS_URL` | PostgreSQL and Redis. Unset means SQLite and an in-process cache |
-| `DJANGO_DEBUG`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS` | The usual Django three. The secret key is required when debug is off |
-| `DJANGO_SECURE` | `true` behind an HTTPS proxy: redirect to https, HSTS, secure cookies |
-| `DJANGO_DEBUG_TOOLBAR` | `true` puts Django Debug Toolbar on every page, for every visitor. For a local stack only: the server refuses to start with it and `DJANGO_SECURE` together |
-| `API_RATE_LIMIT` | Requests per client on the route endpoint. Default `120/min`; empty disables it |
-| `LOGIN_RATE_LIMIT` | Sign-in attempts per client. Default `10/min` |
-
-### Using OpenRouteService
-
-OSRM's public server needs no key. OpenRouteService needs a free one
-([sign up here](https://openrouteservice.org/dev/#/signup)), which is stored
-encrypted in the `ProviderCredential` table.
-
-```bash
-python manage.py generate_encryption_key       # put the output in .env as CREDENTIALS_ENCRYPTION_KEYS
-python manage.py set_provider_key openrouteservice --activate
-```
-
-`--activate` also makes it the default provider. The key can be pasted into the
-settings drawer or entered in the admin instead; all three need the
-encryption key to be set first. Note that the OpenRouteService integration is covered by tests
-with mocked responses but has not yet been run against the live API.
+- **Stations per route.** The corridor setting cannot be raised past 25 miles,
+  where choosing the stops takes 0.16 s against 0.04 s at the default 5.
+- **Cache size.** About 110 KB per trip and 1 to 2 KB per plan. The compose
+  stack caps Redis at 256 MB and lets it drop its least recently used entries.
+- **Routing calls.** One for a new trip, none for a repeat, one for a burst of
+  identical new requests. If that call fails, those waiting try one at a time.
 
 ## Tests
 
 ```bash
 python manage.py test                                  # SQLite
 docker compose exec web python manage.py test          # PostgreSQL
+pip install -r requirements-dev.txt                    # adds the linter and the browser tests
+ruff check . && ruff format --check .
 ```
 
-197 tests, 95% line coverage of the Python code. The optimizer is checked against
-brute force and an independent formula on random routes. The routing providers
-and Nominatim are mocked, and the suite always uses a private cache.
-
-Twenty of the tests drive the map page in a real browser (the dialog, the
-drawers, the counters, the map, the GeoJSON tab, and text that tries to be
-markup). They need the
-development requirements and a Chrome or Edge that is already installed, and
-they are skipped without them, as in the Docker image:
-
-```bash
-pip install -r requirements-dev.txt
-ruff check . && ruff format --check .                  # linter and formatter
-python manage.py test                                  # now includes the browser tests
-```
-
-Those twenty need the network, because the page loads Leaflet from a CDN; the
-rest of the suite makes no network calls. A GitHub Actions workflow
-(`.github/workflows/ci.yml`) runs the linter, the tests on SQLite with the
-browser tests, and the tests on PostgreSQL.
+217 tests, 95% line coverage of the Python code. The routing providers and
+Nominatim are mocked, and the suite always uses a private cache. Twenty-three
+of the tests drive the map page in a real browser; they need the development
+requirements, an installed Chrome or Edge and the network (the page loads
+Leaflet from a CDN), and are skipped without them, as in the Docker image. A
+GitHub Actions workflow runs the linter and the tests on SQLite and PostgreSQL.
 
 ## Limitations
 
 - Stations are positioned at their town centre, not their exact exit, and the
   detour to reach one is not added to the trip. The price file gives no
-  coordinates, only a town and an address such as "I-80 Exit 223". The map
-  draws each fuel stop at the point of the route nearest its town, since the
-  stations are at exits on the route, and leaves the stations passed over at
-  their towns' centres. The API's `lat`, `lon` and `miles_off_route` always
-  describe the town centre.
-- With the default full tank, a trip under 500 miles needs no fuel and costs $0.
-- The public OSRM server has no uptime guarantee and routes for cars.
+  coordinates, only a town and an address such as "I-80 Exit 223". The API's
+  `lat`, `lon` and `miles_off_route` describe the town centre; the map draws
+  each fuel stop at the point of the route nearest its town.
+- `"lat,lon"` input is checked against rough boxes around the lower 48 states,
+  Alaska and Hawaii, not against the border. A point just outside the country,
+  such as Toronto, is accepted and routed like any other.
+- A name that fits several places ("Springfield", or "New York", which Florida
+  also has) is answered with a 400 that lists them; add the state.
+- The public OSRM server has no uptime guarantee and routes for cars. A routing
+  call may take up to 20 seconds before it is given up on.
 - Canadian stations in the price file are ignored.
 - The station index is loaded once per server process; restart the server after
   re-importing data.
-- The page's script is tested through the browser only. It is one file, and its
-  functions have no unit tests of their own.
+
+## Beyond the brief
+
+The brief asks for one endpoint. Everything in this section is extra, and none
+of it is needed to check the points above.
+
+- **A page that uses the API.** `/map/` (where `/` and every `map_url` lead)
+  asks where from and where to, then shows the route, the stops and the fuel
+  bill. Two counters change the cost per stop and the starting fuel, and the
+  trip is planned again. Tabs along the bottom show the fuel in the tank along
+  the trip, the plan as a table, neighbouring cost-per-stop settings, the plan
+  as GeoJSON for [geojson.io](https://geojson.io/), and the API call behind
+  what is on screen. It plans nothing itself: everything on it came from
+  `POST /api/v1/route/`.
+- **Settings without a deploy.** The routing provider, the vehicle's range and
+  fuel economy, the cost per stop and the station corridor are rows in a
+  `Setting` table, edited in the page's settings drawer (the gear button) or
+  the Django admin. `GET /api/v1/settings/` returns them to anyone. `PATCH`
+  changes them and needs a signed-in account with permission and Django's CSRF
+  token; `POST /api/v1/session/` signs in with the admin's accounts, at most 10
+  attempts a minute.
+- **A second routing provider.** OpenRouteService can stand in for OSRM. It
+  needs a free key ([sign up here](https://openrouteservice.org/dev/#/signup)),
+  which is stored encrypted and never returned by the API. Set it in the
+  settings drawer, or with `python manage.py generate_encryption_key` (its
+  output goes in `.env` as `CREDENTIALS_ENCRYPTION_KEYS`) and then
+  `python manage.py set_provider_key openrouteservice --activate`. It has been
+  run against the live API; its error handling is tested with mocked responses.
+- **Django Debug Toolbar.** The compose stack starts with it on: the green tab
+  on the right edge of every page shows the SQL queries, cache calls and timing
+  behind a request, and on the map page it follows the API calls the page
+  makes. It adds 25 to 30 ms to each request;
+  `DJANGO_DEBUG_TOOLBAR=false docker compose up` runs without it.
+- **An admin login for the demo.** The compose stack creates **admin** /
+  **fuelroute-demo** on first start, and `python manage.py seed_admin` does the
+  same for a local run. That password is published here, which is one reason
+  the stack is reachable from this machine only. With `DJANGO_DEBUG` off the
+  command never falls back to it.
+- **Around the endpoint.** `GET /healthz/` returns 200 once the database
+  answers and the station data is loaded, and 503 otherwise. The route endpoint
+  allows 120 requests a minute per client address.
+
+Deployment settings come from the environment and `.env.example` lists them
+all. Beyond a local run: `DATABASE_URL` and `REDIS_URL` (unset means SQLite and
+an in-process cache), `DJANGO_SECRET_KEY` (required when `DJANGO_DEBUG` is
+off), `DJANGO_SECURE` behind an HTTPS proxy, and `DJANGO_NUM_PROXIES` so the
+rate limits count the real client and not the proxy. The debug toolbar is for
+a local stack only: the server refuses to start with it and `DJANGO_SECURE`
+together.
 
 ## Data sources
 
-- **Fuel prices:** the file supplied with the assignment.
-- **US places:** the U.S. Census Bureau 2025 Gazetteer (public domain).
-- **Town positions the Census does not list** (`data/nominatim_cache.json`) and
-  the map tiles: © OpenStreetMap contributors, under the
-  [Open Database License](https://www.openstreetmap.org/copyright), looked up
-  through Nominatim.
-- **Routing:** the public [OSRM](https://project-osrm.org/) demo server, or
-  [OpenRouteService](https://openrouteservice.org/), both built on OpenStreetMap data.
+Fuel prices: the file supplied with the assignment. US places: the U.S. Census
+Bureau 2025 Gazetteer (public domain). Town positions the Census does not list,
+and the map tiles: © OpenStreetMap contributors, under the
+[Open Database License](https://www.openstreetmap.org/copyright). Routing: the
+public [OSRM](https://project-osrm.org/) demo server, or
+[OpenRouteService](https://openrouteservice.org/).
 
 ## Layout
 
 ```
-config/                    Django project (settings, urls, wsgi, the debug toolbar's switch)
+config/                  Django project: settings, urls, wsgi
 planner/
-  models.py                Place, FuelStation, Setting, ProviderCredential
-  conf.py                  which runtime settings exist: keys, defaults, validation
-  crypto.py                encrypted model field for API keys
-  providers/               OSRM and OpenRouteService clients, polyline decoder
-  services/                the work itself, with no knowledge of HTTP or JSON
-    places.py              offline "City, ST" lookup
-    stations.py            in-memory station index, route matching
-    optimizer.py           fuel stop selection
-    trip.py                plans a trip from those pieces, with caching; returns typed objects
-    server_settings.py     reads and changes the runtime settings and provider keys
-  views.py                 thin: the API endpoints, the map page, the health check
-  serializers.py           what the API accepts and the JSON it returns
-  permissions.py           who may change the server settings
-  authentication.py        session sign-in that always checks the CSRF token
-  handlers.py              one JSON shape for every API error
-  throttling.py            per-client rate limits
-  management/commands/     data import, credential management
-  author.py                the note and links in the page's About drawer
-  templates/, static/      the map page: markup, styles, and the script that calls the API
-  warmup.py                work done once at server start
-  tests/                   API, services, commands, and the page in a browser
-data/                      price file, Census Gazetteer, Nominatim cache
-docs/                      brief, decision log, Postman collection
-pyproject.toml             linter and formatter settings
-requirements-dev.txt       linter, coverage and browser-test tooling
+  views.py               thin: the API endpoints, the map page, the health check
+  serializers.py         what the API accepts and the JSON it returns
+  services/              the work itself, with no knowledge of HTTP or JSON
+    places.py            offline "City, ST" lookup
+    stations.py          in-memory station index, route matching
+    optimizer.py         fuel stop selection
+    trip.py              plans a trip from those pieces, with caching
+    server_settings.py   the runtime settings and provider keys
+  providers/             OSRM and OpenRouteService clients
+  models.py, conf.py     the four tables, and which runtime settings exist
+  management/commands/   data import, credential management
+  tests/                 API, services, commands, and the page in a browser
+data/, docs/             price file and reference data; brief, decision log, Postman collection
 ```
