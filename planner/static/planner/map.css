@@ -131,6 +131,10 @@ dl.facts dd { margin: 0; font-weight: 600; }
 .setting .amount input { width: 96px; text-align: right; font-weight: 600; }
 .setting select { max-width: 230px; font-weight: 600; }
 /* ---- about drawer ---- */
+.letter { padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.letter p { font-size: 15px; line-height: 1.55; margin: 0 0 10px; }
+.letter .hello { font-size: 22px; font-weight: 700; line-height: 1.25; margin: 6px 0 12px; }
+.letter .signoff { font-weight: 600; margin: 14px 0 0; }
 .who { display: flex; align-items: center; gap: 14px; margin: 8px 0 12px; }
 .avatar { flex: none; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--blue); color: #fff; font-size: 20px; font-weight: 700; }
 .who .person { display: block; font-size: 18px; }

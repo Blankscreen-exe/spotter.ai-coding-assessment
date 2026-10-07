@@ -331,6 +331,11 @@ is visible at once.
    details are in `planner/author.py`. Claude filled them in from my public
    GitHub profile (name, the first sentence of my bio, and the accounts linked
    there) for me to correct, and a test keeps the bio within the limit.
+7. **The About drawer opens with a note to the reviewer.** I wanted that space
+   to speak to whoever is reviewing this, starting "Hey there. Yes, you." and
+   saying that the page was built with them in mind. Claude drafted the wording
+   from that brief, keeping every claim to things the page really does, and I
+   edit it in `planner/author.py`.
 
 ## 4. Things testing caught
 
@@ -357,7 +362,7 @@ is visible at once.
 
 ## 5. How it is verified
 
-- 156 automated tests covering 95% of the Python lines, run on both SQLite and PostgreSQL 17.
+- 158 automated tests covering 95% of the Python lines, run on both SQLite and PostgreSQL 17.
 - The rate limit was exercised against the running stack: with the limit then at
   60 a minute, 65 quick requests gave 60 successes and 5 refusals with a
   `Retry-After` header.

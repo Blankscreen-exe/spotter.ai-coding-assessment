@@ -8,20 +8,39 @@ x or email.
 BIO_MAX_LENGTH = 120
 
 AUTHOR = {
-    'name': 'M. Hammad',
+    'name': 'M. Hammad Hassan',
     'role': '',
     'location': '',
     'bio': 'I bring ideas to life, MVPs to production and confusion to clarity.',
+    # A note to whoever is reviewing this, shown at the top of the drawer.
+    # Every claim in it should stay true of the page as it is.
+    'note': {
+        'greeting': 'Hey there. Yes, you.',
+        'paragraphs': [
+            'You probably have a pile of these to get through, so I built this one to be reviewed '
+            'without leaving the page.',
+            'The example trips are one click. Let go of a slider and the route re-plans. The API call '
+            'tab shows the exact request behind whatever is on screen, so Postman is optional.',
+            'I focused on small things like that: the error that tells you what to fix, the API key box '
+            'that sits under the provider it belongs to, the link to where you get one.',
+            'If something still gets in your way, that is exactly what I would want to hear. The '
+            'reasoning behind each choice is in the decision log below.',
+        ],
+        'signoff': 'Hammad',
+    },
     'links': [
         {'kind': 'github', 'label': 'GitHub', 'url': 'https://github.com/Blankscreen-exe'},
         {'kind': 'linkedin', 'label': 'LinkedIn', 'url': 'https://www.linkedin.com/in/hammadai/'},
         {'kind': 'website', 'label': 'Website', 'url': 'https://hammad-ai.vercel.app'},
-        {'kind': 'blog', 'label': 'Blog', 'url': 'https://hammadai.hashnode.dev/'},
-        {'kind': 'x', 'label': 'X', 'url': 'https://x.com/blankscreenexe'},
     ],
     'project': {
         'label': 'Source code for this project',
         'url': 'https://github.com/Blankscreen-exe/spotter.ai-coding-assessment',
+    },
+    # Works once the work is merged to main and pushed.
+    'decisions': {
+        'label': 'Decision log: why it is built this way',
+        'url': 'https://github.com/Blankscreen-exe/spotter.ai-coding-assessment/blob/main/docs/DECISIONS.md',
     },
 }
 
