@@ -136,7 +136,7 @@ def stations_along(coordinates, route_miles: float, corridor_miles: float,
         nearest = closeness.argmax(axis=1)
         chord = np.sqrt(np.clip(2.0 - 2.0 * closeness[np.arange(len(chunk)), nearest], 0.0, None))
         distance = 2 * EARTH_RADIUS_MILES * np.arcsin(np.minimum(chord / 2, 1.0))
-        for row, sample, miles_off in zip(chunk, nearest, distance):
+        for row, sample, miles_off in zip(chunk, nearest, distance, strict=True):
             if miles_off <= corridor_miles:
                 found.append(RouteStation(index.stations[row], float(samples[sample] * scale), float(miles_off)))
     found.sort(key=lambda s: s.mile)

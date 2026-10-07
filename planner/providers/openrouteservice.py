@@ -51,5 +51,5 @@ class OpenRouteServiceProvider(RoutingProvider):
                 distance_miles=summary['distance'] / METERS_PER_MILE,
                 duration_seconds=summary['duration'],
             )
-        except (KeyError, IndexError, TypeError):
-            raise RoutingProviderError('OpenRouteService returned a response without a route.')
+        except (KeyError, IndexError, TypeError) as exc:
+            raise RoutingProviderError('OpenRouteService returned a response without a route.') from exc

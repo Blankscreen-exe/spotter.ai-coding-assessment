@@ -102,11 +102,11 @@ def change(settings: dict[str, Any], provider_keys: dict[str, str], changed_by: 
                 _store_key(provider, api_key)
             for key, value in settings.items():
                 Setting.objects.update_or_create(key=key, defaults={'value': conf.to_stored(value)})
-    except ImproperlyConfigured:
+    except ImproperlyConfigured as exc:
         raise EncryptionNotConfigured(
             'An API key cannot be stored until the server has an encryption key. '
             'Set CREDENTIALS_ENCRYPTION_KEYS (see the README) and restart.'
-        )
+        ) from exc
     logger.info('Settings changed by %s: %s', changed_by, ', '.join(
         [f'{key}={conf.to_stored(value)}' for key, value in sorted(settings.items())]
         + [f'{provider} API key' for provider in sorted(provider_keys)]

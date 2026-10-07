@@ -80,6 +80,9 @@ class Setting(models.Model):
     value = models.CharField(max_length=200)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def __str__(self):
+        return f'{self.key} = {self.value}'
+
     def clean(self):
         definition = conf.DEFINITIONS.get(self.key)
         if definition is None:
@@ -87,10 +90,7 @@ class Setting(models.Model):
         try:
             definition.parse(self.value)
         except ValueError as exc:
-            raise ValidationError({'value': f'Invalid value: {exc}'})
-
-    def __str__(self):
-        return f'{self.key} = {self.value}'
+            raise ValidationError({'value': f'Invalid value: {exc}'}) from exc
 
 
 class ProviderCredential(models.Model):
@@ -100,8 +100,8 @@ class ProviderCredential(models.Model):
     api_key = EncryptedTextField()
     updated_at = models.DateTimeField(auto_now=True)
 
-    def masked(self):
-        return '*' * 8 + self.api_key[-4:] if self.api_key else ''
-
     def __str__(self):
         return self.provider
+
+    def masked(self):
+        return '*' * 8 + self.api_key[-4:] if self.api_key else ''

@@ -39,7 +39,7 @@ class Command(BaseCommand):
             with open(options['csv'], newline='', encoding='utf-8') as handle:
                 rows = list(csv.DictReader(handle))
         except OSError as exc:
-            raise CommandError(f'Cannot read {options["csv"]}: {exc}')
+            raise CommandError(f'Cannot read {options["csv"]}: {exc}') from exc
 
         # One station per OPIS ID. Rows sharing an ID are the same truck stop
         # listed under several names, sometimes with different prices.

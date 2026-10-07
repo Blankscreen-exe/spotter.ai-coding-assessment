@@ -1,0 +1,14 @@
+# Tooling only: the project is not packaged. Dependencies are in requirements.txt.
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["planner/migrations"]
+
+[tool.ruff.lint]
+# Errors and warnings, unused and misordered imports, likely bugs, outdated
+# syntax, Django-specific mistakes and needless complexity.
+select = ["E", "F", "W", "I", "B", "UP", "DJ", "SIM", "C4"]
+
+[tool.ruff.format]
+quote-style = "single"

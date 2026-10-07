@@ -18,7 +18,7 @@ def _fernet():
     try:
         return MultiFernet([Fernet(k.encode()) for k in keys])
     except ValueError as exc:
-        raise ImproperlyConfigured(f'CREDENTIALS_ENCRYPTION_KEYS holds an invalid Fernet key: {exc}')
+        raise ImproperlyConfigured(f'CREDENTIALS_ENCRYPTION_KEYS holds an invalid Fernet key: {exc}') from exc
 
 
 def encrypt(plaintext):
@@ -28,11 +28,11 @@ def encrypt(plaintext):
 def decrypt(token):
     try:
         return _fernet().decrypt(token.removeprefix(PREFIX).encode()).decode()
-    except InvalidToken:
+    except InvalidToken as exc:
         raise ImproperlyConfigured(
             'A stored credential could not be decrypted with the configured '
             'CREDENTIALS_ENCRYPTION_KEYS. Re-enter the credential.'
-        )
+        ) from exc
 
 
 class EncryptedTextField(models.TextField):

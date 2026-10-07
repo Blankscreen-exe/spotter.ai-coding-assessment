@@ -26,7 +26,7 @@ def _number(raw):
     try:
         value = float(raw)
     except (TypeError, ValueError):
-        raise ValueError('must be a number')
+        raise ValueError('must be a number') from None
     if not math.isfinite(value):
         raise ValueError('must be a finite number')
     return value

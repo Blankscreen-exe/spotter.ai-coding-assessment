@@ -20,10 +20,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         # The key is never accepted as an argument: it would land in shell history.
-        if options['from_env']:
-            api_key = os.environ.get(options['from_env'], '')
-        else:
-            api_key = getpass.getpass('API key: ')
+        api_key = os.environ.get(options['from_env'], '') if options['from_env'] else getpass.getpass('API key: ')
         api_key = api_key.strip()
         if not api_key:
             raise CommandError('No API key given.')

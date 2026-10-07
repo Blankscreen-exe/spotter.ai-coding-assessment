@@ -59,13 +59,15 @@ class RoutingProvider:
     def _send(self, method: str, url: str, **kwargs: Any) -> requests.Response:
         try:
             return self.session.request(method, url, timeout=settings.ROUTING_TIMEOUT_SECONDS, **kwargs)
-        except requests.Timeout:
-            raise RoutingProviderError(f'{self.label} did not respond in time.')
+        except requests.Timeout as exc:
+            raise RoutingProviderError(f'{self.label} did not respond in time.') from exc
         except requests.RequestException as exc:
-            raise RoutingProviderError(f'Could not reach {self.label}: {exc.__class__.__name__}.')
+            raise RoutingProviderError(f'Could not reach {self.label}: {exc.__class__.__name__}.') from exc
 
     def _json(self, response: requests.Response) -> Any:
         try:
             return response.json()
-        except ValueError:
-            raise RoutingProviderError(f'{self.label} returned HTTP {response.status_code} with a non-JSON body.')
+        except ValueError as exc:
+            raise RoutingProviderError(
+                f'{self.label} returned HTTP {response.status_code} with a non-JSON body.'
+            ) from exc

@@ -107,7 +107,7 @@ def _cheapest_fuel(stations, trip_miles, range_miles, mpg, start_range_miles):
             target = cheapest
             bought = range_miles - fuel
 
-        if 0 < here and bought > EPSILON:
+        if here > 0 and bought > EPSILON:
             purchases.append(Purchase(stations[here - 1], bought / mpg, fuel))
         fuel += bought - (miles[target] - miles[here])
         here = target

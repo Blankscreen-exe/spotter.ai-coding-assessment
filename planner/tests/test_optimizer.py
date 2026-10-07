@@ -41,7 +41,7 @@ def lowest_possible_bill(stations, trip_miles, start_range):
         x for mile, _ in sources for x in (mile, mile + RANGE) if 0 < x < trip_miles
     })
     total = 0.0
-    for left, right in zip(edges, edges[1:]):
+    for left, right in zip(edges, edges[1:], strict=False):
         middle = (left + right) / 2
         in_reach = [price for mile, price in sources if mile <= middle <= mile + RANGE]
         if not in_reach:
