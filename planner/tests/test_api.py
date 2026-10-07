@@ -201,9 +201,16 @@ class SettingsApiTests(TestCase):
         providers = {provider['name']: provider for provider in self.settings()['providers']}
         self.assertEqual(
             providers['osrm'],
-            {'name': 'osrm', 'label': 'OSRM public server (no key)', 'active': True, 'needs_key': False, 'has_key': False},
+            {'name': 'osrm', 'label': 'OSRM public server (no key)', 'active': True, 'needs_key': False,
+             'has_key': False, 'key_page': None},
         )
         self.assertEqual((providers['openrouteservice']['active'], providers['openrouteservice']['needs_key']), (False, True))
+
+    def test_says_where_to_get_a_key_for_a_provider_that_needs_one(self):
+        providers = {provider['name']: provider for provider in self.settings()['providers']}
+        self.assertEqual(providers['openrouteservice']['key_page'], 'https://openrouteservice.org/dev/#/signup')
+        for provider in providers.values():
+            self.assertEqual(provider['needs_key'], provider['key_page'] is not None)
 
     def test_reports_that_a_key_is_stored_but_never_the_key(self):
         with override_settings(CREDENTIALS_ENCRYPTION_KEYS=[Fernet.generate_key().decode()]):

@@ -61,8 +61,9 @@ class Definition:
     unit: str = ''  # how a value is shown to people: 'USD', 'miles', 'mpg' or nothing
 
 
-# Providers that cannot be used until an API key is stored for them.
-PROVIDERS_NEEDING_A_KEY = {PROVIDER_ORS}
+# Providers that cannot be used until an API key is stored for them, and where to get one.
+PROVIDER_KEY_PAGES = {PROVIDER_ORS: 'https://openrouteservice.org/dev/#/signup'}
+PROVIDERS_NEEDING_A_KEY = set(PROVIDER_KEY_PAGES)
 
 DEFINITIONS = {
     ROUTING_PROVIDER: Definition(

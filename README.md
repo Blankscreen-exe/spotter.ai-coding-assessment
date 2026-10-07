@@ -244,8 +244,9 @@ The ones that matter beyond a local run:
 
 ### Using OpenRouteService
 
-OSRM's public server needs no key. OpenRouteService needs a free one, which is
-stored encrypted in the `ProviderCredential` table.
+OSRM's public server needs no key. OpenRouteService needs a free one
+([sign up here](https://openrouteservice.org/dev/#/signup)), which is stored
+encrypted in the `ProviderCredential` table.
 
 ```bash
 python manage.py generate_encryption_key       # put the output in .env as CREDENTIALS_ENCRYPTION_KEYS
@@ -264,7 +265,7 @@ python manage.py test                                  # SQLite
 docker compose exec web python manage.py test          # PostgreSQL
 ```
 
-149 tests, 95% line coverage of the Python code. The optimizer is checked against
+150 tests, 95% line coverage of the Python code. The optimizer is checked against
 brute force and an independent formula on random routes. The routing providers
 and Nominatim are mocked, so the suite makes no network calls, and it always
 uses a private cache.

@@ -166,6 +166,7 @@ class SettingsView(APIView):
                     'active': name == current[conf.ROUTING_PROVIDER],
                     'needs_key': name in conf.PROVIDERS_NEEDING_A_KEY,
                     'has_key': name in with_a_key,
+                    'key_page': conf.PROVIDER_KEY_PAGES.get(name),
                 }
                 for name, label in conf.PROVIDER_CHOICES
             ],

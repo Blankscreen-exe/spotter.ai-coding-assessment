@@ -492,9 +492,13 @@
     }
     box.className = 'keybox';
     // "OpenRouteService (API key)" reads oddly after "API key for", so the bracket is dropped here.
-    box.innerHTML = `<label for="providerKey">API key for ${esc(provider.label.replace(/\s*\(.*\)$/, ''))} ${stored}</label>
+    const providerName = provider.label.replace(/\s*\(.*\)$/, '');
+    // Only ever link to a real web address, whatever the server sends.
+    const keyPage = /^https:\/\//.test(provider.key_page || '') ? provider.key_page : null;
+    box.innerHTML = `<label for="providerKey">API key for ${esc(providerName)} ${stored}</label>
       <input type="password" id="providerKey" autocomplete="off" data-key-for="${esc(provider.name)}"
         placeholder="${provider.has_key ? 'Paste a new key to replace the stored one' : 'Paste the API key'}">
+      ${keyPage ? `<a class="getkey" href="${esc(keyPage)}" target="_blank" rel="noopener noreferrer">${provider.has_key ? 'Get another key' : 'No key yet? Get a free one'} from ${esc(providerName)} &#8599;</a>` : ''}
       <p class="note">${provider.has_key ? 'Leave this empty to keep the stored key.' : 'Needed before the server can switch to this provider.'}
         It is stored encrypted and never shown again.</p>
       <div class="problem" data-problem="provider_keys.${esc(provider.name)}"></div>`;

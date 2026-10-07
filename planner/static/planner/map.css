@@ -134,6 +134,7 @@ dl.facts dd { margin: 0; font-weight: 600; }
 .keybox label { font-size: 13px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .keybox input { width: 100%; }
 .keybox .note { margin: 0; font-size: 12.5px; }
+.keybox .getkey { font-size: 13px; font-weight: 600; justify-self: start; }
 .problem { color: var(--red); font-size: 12.5px; }
 .problem:not(:empty) { margin-top: 4px; }
 .link.small { font-size: 12.5px; padding: 0; text-decoration: underline; }
