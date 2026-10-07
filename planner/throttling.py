@@ -24,3 +24,12 @@ class RouteRateThrottle(AnonRateThrottle):
         except Exception:
             logger.warning('Rate limit check failed; allowing the request', exc_info=True)
             return True
+
+
+class LoginRateThrottle(AnonRateThrottle):
+    """Slows down password guessing on the sign-in endpoint. LOGIN_RATE_LIMIT, "10/min" by default."""
+
+    scope = 'login'
+
+    def get_rate(self):
+        return settings.LOGIN_RATE_LIMIT or None

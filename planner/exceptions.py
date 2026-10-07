@@ -19,6 +19,21 @@ class InvalidRequest(PlannerError):
     code = 'invalid_request'
 
 
+class InvalidLogin(PlannerError):
+    status_code = 400
+    code = 'invalid_login'
+
+
+class NotSignedIn(PlannerError):
+    status_code = 401
+    code = 'not_signed_in'
+
+
+class NotAllowed(PlannerError):
+    status_code = 403
+    code = 'not_allowed'
+
+
 class RouteNotFound(PlannerError):
     status_code = 422
     code = 'route_not_found'
@@ -37,3 +52,8 @@ class RoutingProviderError(PlannerError):
 class ProviderNotConfigured(PlannerError):
     status_code = 503
     code = 'routing_provider_not_configured'
+
+
+class EncryptionNotConfigured(PlannerError):
+    status_code = 503
+    code = 'encryption_not_configured'

@@ -214,10 +214,12 @@ class SettingsApiTests(TestCase):
         self.assertNotIn('super-secret-key', response.content.decode())
         self.assertNotIn('api_key', response.content.decode())
 
-    def test_is_read_only(self):
-        for method in (self.client.post, self.client.put, self.client.patch, self.client.delete):
-            response = method(self.url, {'key': conf.STOP_COST, 'value': '0'}, content_type='application/json')
-            self.assertEqual(response.status_code, 405)
+    def test_a_visitor_cannot_write(self):
+        # Saving is PATCH and needs a signed-in account (see test_settings_api); nothing else writes.
+        body = {'settings': {conf.STOP_COST: 0}}
+        self.assertEqual(self.client.patch(self.url, body, content_type='application/json').status_code, 401)
+        for method in (self.client.post, self.client.put, self.client.delete):
+            self.assertEqual(method(self.url, body, content_type='application/json').status_code, 405)
         self.assertEqual(Setting.objects.get(key=conf.STOP_COST).value, '5')
 
 
@@ -245,7 +247,7 @@ class RouteMapTests(TestCase):
         self.assertEqual(config['apiUrl'], reverse('route-plan'))
         self.assertEqual(config['healthUrl'], reverse('health'))
         self.assertEqual(config['settingsUrl'], reverse('settings'))
-        self.assertEqual(config['adminUrl'], reverse('admin:planner_setting_changelist'))
+        self.assertEqual(config['sessionUrl'], reverse('session'))
 
     def test_sliders_start_from_the_server_settings(self):
         self.assertEqual(

@@ -4,6 +4,7 @@ Every setting has a code default here, so the app runs on an empty table; a row
 in the table overrides the default without a deploy.
 """
 
+import math
 from dataclasses import dataclass
 
 ROUTING_PROVIDER = 'routing.provider'
@@ -20,22 +21,32 @@ PROVIDER_CHOICES = [
 ]
 
 
+def _number(raw):
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        raise ValueError('must be a number')
+    if not math.isfinite(value):
+        raise ValueError('must be a finite number')
+    return value
+
+
 def _positive_float(raw):
-    value = float(raw)
+    value = _number(raw)
     if not value > 0:
         raise ValueError('must be greater than zero')
     return value
 
 
 def _non_negative_float(raw):
-    value = float(raw)
+    value = _number(raw)
     if not value >= 0:
         raise ValueError('must be zero or more')
     return value
 
 
 def _provider(raw):
-    value = raw.strip().lower()
+    value = str(raw).strip().lower()
     if value not in dict(PROVIDER_CHOICES):
         raise ValueError('must be one of: ' + ', '.join(dict(PROVIDER_CHOICES)))
     return value
@@ -77,6 +88,11 @@ DEFINITIONS = {
 
 # The order people read them in: what is tuned most often comes first.
 DISPLAY_ORDER = (ROUTING_PROVIDER, STOP_COST, RANGE_MILES, MPG, CORRIDOR_MILES)
+
+
+def to_stored(value):
+    """A parsed value as the text kept in the Setting table: 8.0 is stored as "8"."""
+    return f'{value:g}' if isinstance(value, float) else str(value)
 
 
 def load_settings():
