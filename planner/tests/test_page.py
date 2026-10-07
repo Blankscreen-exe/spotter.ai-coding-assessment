@@ -18,6 +18,8 @@ import unittest
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.core.cache import cache
 
+from planner.models import Place
+from planner.services.places import normalize
 from planner.services.stations import reset_index
 
 from .fixtures import create_trip_data, routing_mock
@@ -152,6 +154,13 @@ class MapPageTests(PageTestCase):
         expect(self.page.locator('#onboarding')).to_be_hidden()
         expect(self.page.locator('.tab.on')).to_have_text('Fuel plan')
         expect(self.page.locator('#panel tr.stoprow')).to_have_count(2)
+
+    def test_a_link_that_names_a_routing_provider_keeps_to_it(self):
+        self.open_trip(TRIP + '&provider=osrm')
+        with self.page.expect_response(lambda response: '/api/v1/route/' in response.url) as answered:
+            self.page.click('#cost [data-step="1"]')
+        self.assertEqual(answered.value.request.post_data_json['provider'], 'osrm')
+        self.page.wait_for_function("location.search.includes('provider=osrm')")
 
     # ---------- the bottom drawer ----------
 
@@ -302,6 +311,12 @@ class HostileTextTests(PageTestCase):
         self.page.locator('.pin[data-station]').first.click()  # its pop-up on the map
         expect(self.page.locator('.leaflet-popup')).to_contain_text('<img src=x')
         self.assert_nothing_ran()
+
+    def test_the_curl_command_can_be_pasted_when_a_name_has_an_apostrophe(self):
+        Place.objects.create(name="O'Fallon", state='KS', key=normalize("O'Fallon"), lat=40.0, lon=-100.0)
+        self.open_trip("start=O'Fallon, KS&finish=Omega, OH", tab='#api')
+        # A shell ends a single-quoted string at the next single quote, so the one in the name is written '\''.
+        expect(self.page.locator('#panel pre').first).to_contain_text(r"""-d '{"start":"O'\''Fallon, KS",""")
 
     def test_what_the_visitor_types_is_shown_as_text(self):
         self.plan_from_the_dialog('<img src=x onerror="window.hacked = 1">, KS', 'Omega, OH')

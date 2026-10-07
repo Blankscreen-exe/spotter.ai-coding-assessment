@@ -5,10 +5,11 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from unittest import mock
 
+import numpy as np
 from cryptography.fernet import Fernet
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from planner import conf
@@ -120,6 +121,14 @@ class RouteApiTests(TripFixture):
         body = self.plan(start='alpha ks').json()
         self.assertEqual(body['meta']['served_from'], 'plan cache')
         self.assertEqual(body['start']['query'], 'alpha ks')
+
+    def test_the_address_works_without_its_last_slash(self):
+        # Django would answer a missing slash with a redirect, which a client follows with a GET and no body.
+        response = self.client.post(
+            self.url.rstrip('/'), {'start': 'Alpha, KS', 'finish': 'Omega, OH'}, content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['start']['name'], 'Alpha, KS')
 
     def test_get_with_query_string(self):
         response = self.client.get(self.url, {'start': 'Alpha, KS', 'finish': 'Omega, OH'})
@@ -383,6 +392,21 @@ class RouteMapTests(TestCase):
 
     # What the page does with all this (opening the drawer, re-planning, escaping text from data)
     # is tested in a real browser: see test_page.py.
+
+
+class RouteLineTests(SimpleTestCase):
+    """The route line kept and sent is a thinned copy of the provider's."""
+
+    def test_it_never_has_more_points_than_the_limit_and_keeps_both_ends(self):
+        for length in (1, 2, 2999, 3000, 3001, 6000, 35146):
+            line = np.column_stack([np.arange(length, dtype=float), np.zeros(length)])
+            thinned = trip._thin(line)
+            self.assertEqual(len(thinned), min(length, trip.MAX_GEOMETRY_POINTS), length)
+            self.assertEqual((thinned[0], thinned[-1]), ([0.0, 0.0], [length - 1.0, 0.0]), length)
+
+    def test_a_short_line_is_kept_whole(self):
+        line = np.array([[-100.0, 40.0], [-99.5, 40.123456789], [-99.0, 40.0]])
+        self.assertEqual(trip._thin(line), [[-100.0, 40.0], [-99.5, 40.12346], [-99.0, 40.0]])
 
 
 class SameTripAtOnceTests(TripFixture):

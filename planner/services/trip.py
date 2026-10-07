@@ -153,10 +153,8 @@ def _trip_key(kind: str, provider: RoutingProvider, start: Location, finish: Loc
 
 def _thin(coordinates: np.ndarray) -> list[list[float]]:
     """At most MAX_GEOMETRY_POINTS points, rounded to 5 decimals (about a metre)."""
-    step = max(1, -(-len(coordinates) // MAX_GEOMETRY_POINTS))
-    keep = np.arange(0, len(coordinates), step)
-    if keep[-1] != len(coordinates) - 1:
-        keep = np.append(keep, len(coordinates) - 1)
+    # Evenly spaced along the line, the first and last points always among them.
+    keep = np.linspace(0, len(coordinates) - 1, min(len(coordinates), MAX_GEOMETRY_POINTS)).round().astype(int)
     return np.round(coordinates[keep], 5).tolist()
 
 

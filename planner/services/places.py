@@ -62,13 +62,20 @@ STATES = {
 }
 STATE_BY_NAME = {name.lower(): code for code, name in STATES.items()}
 
-# Rough box around the 50 states; catches swapped or foreign coordinates early.
-US_LAT = (18.0, 72.0)
-US_LON = (-180.0, -66.0)
+# Rough boxes around the lower 48 states, Alaska and Hawaii: (south, north, west, east).
+# They catch swapped, mistyped and far-off coordinates before a routing call is spent
+# on them. They are not the border: a point just across it (Toronto, Tijuana) is
+# inside a box and is routed like any other.
+US_BOXES = (
+    (24.4, 49.4, -125.0, -66.9),
+    (51.0, 71.5, -180.0, -129.9),
+    (18.9, 22.3, -160.3, -154.7),
+)
 
 ABBREVIATIONS = {'st': 'saint', 'ste': 'sainte', 'ft': 'fort', 'mt': 'mount'}
 COORDINATES = re.compile(r'^\s*(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)\s*$')
-COUNTRY_SUFFIX = re.compile(r',?\s*(usa|u\.s\.a\.|united states(?: of america)?)\s*$', re.IGNORECASE)
+# A country after the place, set off by a comma or a space, so that "Azusa" is left whole.
+COUNTRY_SUFFIX = re.compile(r'(?:\s*,\s*|\s+)(usa|u\.s\.a\.|united states(?: of america)?)\s*$', re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -109,6 +116,15 @@ def find_place(name: str, state: str) -> Place | None:
     return None
 
 
+def _places_named(name: str) -> list[Place]:
+    """The places with this name in any state, largest first. A handful at most."""
+    for key in key_variants(name):
+        matches = list(Place.objects.filter(key=key, is_alias=False).order_by('-land_sqmi')[:6])
+        if matches:
+            return matches
+    return []
+
+
 def _split_state(text: str) -> tuple[str, str | None]:
     """Split "Chicago, IL" / "Chicago IL" / "Chicago, Illinois" into (city, state code)."""
     if ',' in text:
@@ -134,22 +150,23 @@ def resolve_location(text: str) -> Location:
     match = COORDINATES.match(query)
     if match:
         lat, lon = float(match.group(1)), float(match.group(2))
-        if not (US_LAT[0] <= lat <= US_LAT[1] and US_LON[0] <= lon <= US_LON[1]):
+        if not any(south <= lat <= north and west <= lon <= east for south, north, west, east in US_BOXES):
             raise LocationError(f'"{query}" is not a latitude,longitude inside the USA.')
         return Location(query, f'{lat:.5f}, {lon:.5f}', lat, lon)
 
-    city, state = _split_state(COUNTRY_SUFFIX.sub('', query))
-    if state:
+    text = COUNTRY_SUFFIX.sub('', query)
+    city, state = _split_state(text)
+    matches = []
+    if state is None or ',' not in text:
+        # Without a comma, a name that ends in a state's name may be a town in its own right:
+        # "West New York" is in New Jersey, and is not "West" in New York.
+        matches = _places_named(text)
+    if state and not matches:
         place = find_place(city, state)
         if place is None:
             raise LocationError(f'Could not find "{city}" in {STATES[state]}. Check the spelling or pass "lat,lon".')
         return Location(query, str(place), place.lat, place.lon)
 
-    matches = []
-    for key in key_variants(city):
-        matches = list(Place.objects.filter(key=key, is_alias=False).order_by('-land_sqmi')[:6])
-        if matches:
-            break
     if len(matches) == 1:
         return Location(query, str(matches[0]), matches[0].lat, matches[0].lon)
     if matches:

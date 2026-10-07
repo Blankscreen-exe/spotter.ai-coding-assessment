@@ -55,10 +55,12 @@
 
   // Leaving a number out lets the server use its own setting. The page also asks for the stations the
   // planner chose from, to draw them; a plain API call is not sent them unless it asks.
-  function buildRequest(start, finish, cost, fuel) {
+  // provider is only ever what a link named (the API's map_url repeats it); left out, the server's setting decides.
+  function buildRequest(start, finish, cost, fuel, provider) {
     const request = { start, finish, include_candidates: true };
     if (cost !== undefined) request.stop_cost = cost;
     if (fuel !== undefined) request.initial_range_miles = fuel;
+    if (provider) request.provider = provider;
     return request;
   }
 
@@ -479,7 +481,9 @@
         pre.textContent = text;
         box.append(head, pre);
       };
-      block('Request', `curl -X POST ${url} \\\n  -H "Content-Type: application/json" \\\n  -d '${JSON.stringify(call.request)}'`);
+      // Inside single quotes a shell reads everything as it stands except a single quote: "Coeur d'Alene, ID".
+      const json = JSON.stringify(call.request).replaceAll("'", "'\\''");
+      block('Request', `curl -X POST ${url} \\\n  -H "Content-Type: application/json" \\\n  -d '${json}'`);
       block(`Response: HTTP ${call.status}`, JSON.stringify(body, null, 2));
       return box;
     },
@@ -558,8 +562,8 @@
     known.loading = true;
     for (const cost of costs.filter((each) => !known.plans.has(each))) {
       const answer = await callApi({
-        start: call.request.start, finish: call.request.finish, stop_cost: cost,
-        initial_range_miles: call.body.vehicle.initial_range_miles, include_geometry: false,
+        ...buildRequest(call.request.start, call.request.finish, cost, call.body.vehicle.initial_range_miles, call.request.provider),
+        include_candidates: false, include_geometry: false,
       });
       if (answer.status !== 200) {
         known.failed = answer;
@@ -618,7 +622,7 @@
     clearTimeout(planTimer);
     const ticket = ++sequence;
     $('strip').classList.add('busy');
-    const call = await callApi(buildRequest(current.request.start, current.request.finish, cost.value, fuel.value));
+    const call = await callApi(buildRequest(current.request.start, current.request.finish, cost.value, fuel.value, current.request.provider));
     if (ticket !== sequence) return;  // a newer change is already on its way
     $('strip').classList.remove('busy');
     lastCall = call;
@@ -1079,7 +1083,7 @@
     $('finish').value = asked.get('finish');
     const number = (name, fallback) => (asked.get(name) !== null && asked.get(name) !== '' && !Number.isNaN(Number(asked.get(name))) ? Number(asked.get(name)) : fallback);
     $('onboarding').hidden = false;
-    firstPlan(buildRequest(asked.get('start'), asked.get('finish'), number('stop_cost', undefined), number('initial_range_miles', undefined)));
+    firstPlan(buildRequest(asked.get('start'), asked.get('finish'), number('stop_cost', undefined), number('initial_range_miles', undefined), asked.get('provider')));
   } else {
     openOnboarding();
   }

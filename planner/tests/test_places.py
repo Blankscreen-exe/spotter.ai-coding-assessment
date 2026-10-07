@@ -45,6 +45,9 @@ class ResolveLocationTests(TestCase):
                 place('Springfield', 'IL', 39.79, -89.64, land=60),
                 place('Springfield', 'MO', 37.19, -93.29, land=82),
                 place('Nashville', 'TN', 36.17, -86.78, alias=True),
+                place('Azusa', 'CA', 34.14, -117.91),
+                place('West New York', 'NJ', 40.79, -74.01),
+                place('Olympia', 'WA', 47.04, -122.89),
             ]
         )
 
@@ -68,9 +71,27 @@ class ResolveLocationTests(TestCase):
         location = resolve_location('41.88, -87.63')
         self.assertEqual((location.lat, location.lon), (41.88, -87.63))
 
-    def test_coordinates_outside_the_usa_are_rejected(self):
-        with self.assertRaisesMessage(LocationError, 'inside the USA'):
-            resolve_location('48.85, 2.35')
+    def test_coordinates_far_from_the_usa_are_rejected(self):
+        # Paris, Mexico City, the Pacific half way to Hawaii, and a latitude and longitude the wrong way round.
+        for text in ('48.85, 2.35', '19.43, -99.13', '30.0, -140.0', '-87.63, 41.88'):
+            with self.assertRaisesMessage(LocationError, 'inside the USA', msg=text):
+                resolve_location(text)
+
+    def test_coordinates_in_alaska_and_hawaii_are_accepted(self):
+        self.assertEqual(resolve_location('61.22, -149.90').lat, 61.22)
+        self.assertEqual(resolve_location('21.31, -157.86').lat, 21.31)
+
+    def test_a_name_that_ends_like_a_country_is_left_whole(self):
+        self.assertEqual(resolve_location('Azusa').name, 'Azusa, CA')
+        self.assertEqual(resolve_location('Azusa, CA, USA').name, 'Azusa, CA')
+        self.assertEqual(resolve_location('Azusa USA').name, 'Azusa, CA')
+
+    def test_a_town_whose_name_ends_in_a_state_is_not_split(self):
+        self.assertEqual(resolve_location('West New York').name, 'West New York, NJ')
+        self.assertEqual(resolve_location('west new york nj').name, 'West New York, NJ')
+        # A town followed by its state, without a comma, still reads as that.
+        self.assertEqual(resolve_location('Olympia Washington').name, 'Olympia, WA')
+        self.assertEqual(resolve_location('New York New York').name, 'New York, NY')
 
     def test_unique_name_needs_no_state(self):
         self.assertEqual(resolve_location('Chicago').name, 'Chicago, IL')
