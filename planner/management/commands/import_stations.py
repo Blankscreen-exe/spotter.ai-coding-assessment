@@ -23,9 +23,10 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--csv', default=str(settings.FUEL_PRICES_CSV))
         parser.add_argument(
-            '--geocode-missing', action='store_true',
+            '--geocode-missing',
+            action='store_true',
             help='Query Nominatim (1 request/second) for towns that are in neither the '
-                 'Census file nor the cache, and add the answers to the cache.',
+            'Census file nor the cache, and add the answers to the cache.',
         )
         parser.add_argument('--if-empty', action='store_true', help='Do nothing if stations are already loaded.')
 
@@ -54,14 +55,16 @@ class Command(BaseCommand):
         for opis_id, group in grouped.items():
             first = group[0]
             prices = [Decimal(row['Retail Price']) for row in group]
-            stations.append(FuelStation(
-                opis_id=opis_id,
-                name=first['Truckstop Name'].strip(),
-                address=first['Address'].strip(),
-                city=first['City'].strip(),
-                state=first['State'].strip(),
-                price=sum(prices) / len(prices),
-            ))
+            stations.append(
+                FuelStation(
+                    opis_id=opis_id,
+                    name=first['Truckstop Name'].strip(),
+                    address=first['Address'].strip(),
+                    city=first['City'].strip(),
+                    state=first['State'].strip(),
+                    price=sum(prices) / len(prices),
+                )
+            )
 
         census = self._census_places()
         lookups = NominatimCache(settings.NOMINATIM_CACHE)
@@ -83,13 +86,20 @@ class Command(BaseCommand):
         with transaction.atomic():
             FuelStation.objects.all().delete()
             Place.objects.filter(source=Place.SOURCE_NOMINATIM).delete()
-            extra = Place.objects.bulk_create([
-                Place(
-                    name=city, state=state, key=normalize(city),
-                    lat=position[0], lon=position[1], source=Place.SOURCE_NOMINATIM,
-                )
-                for (city, state), position in sorted(geocoded.items()) if position
-            ])
+            extra = Place.objects.bulk_create(
+                [
+                    Place(
+                        name=city,
+                        state=state,
+                        key=normalize(city),
+                        lat=position[0],
+                        lon=position[1],
+                        source=Place.SOURCE_NOMINATIM,
+                    )
+                    for (city, state), position in sorted(geocoded.items())
+                    if position
+                ]
+            )
             by_nominatim = {(place.name, place.state) for place in extra}
             town_place.update({(place.name, place.state): place.pk for place in extra})
             for station in stations:
@@ -100,7 +110,8 @@ class Command(BaseCommand):
 
         sources = Counter(
             Place.SOURCE_NOMINATIM if (station.city, station.state) in by_nominatim else Place.SOURCE_CENSUS
-            for station in stations if station.place_id
+            for station in stations
+            if station.place_id
         )
         located = sum(sources.values())
         self.stdout.write(f'CSV rows read:              {len(rows)}')
@@ -111,10 +122,12 @@ class Command(BaseCommand):
         self.stdout.write(f'  located by Nominatim:     {sources[Place.SOURCE_NOMINATIM]}')
         self.stdout.write(f'  not located (unused):     {len(stations) - located}')
         if never_asked:
-            self.stdout.write(self.style.WARNING(
-                f'{len(never_asked)} towns are in neither the Census file nor the cache. '
-                'Re-run with --geocode-missing to look them up.'
-            ))
+            self.stdout.write(
+                self.style.WARNING(
+                    f'{len(never_asked)} towns are in neither the Census file nor the cache. '
+                    'Re-run with --geocode-missing to look them up.'
+                )
+            )
 
     def _census_places(self):
         """Map (key, state) to a Place id, preferring real names and larger places."""

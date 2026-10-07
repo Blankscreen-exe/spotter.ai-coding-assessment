@@ -31,17 +31,23 @@ class NominatimCacheTests(SimpleTestCase):
 
     def test_structured_search_hit_is_remembered(self):
         lookups = NominatimCache(self.path)
-        with mock.patch.object(nominatim.requests, 'get', return_value=reply([{'lat': '39.99870', 'lon': '-78.23890'}])) as get:
+        with mock.patch.object(
+            nominatim.requests, 'get', return_value=reply([{'lat': '39.99870', 'lon': '-78.23890'}])
+        ) as get:
             self.assertEqual(lookups.fetch('Breezewood', 'PA'), [39.9987, -78.2389])
         get.assert_called_once()
         params = get.call_args.kwargs['params']
-        self.assertEqual((params['city'], params['state'], params['countrycodes']), ('Breezewood', 'Pennsylvania', 'us'))
+        self.assertEqual(
+            (params['city'], params['state'], params['countrycodes']), ('Breezewood', 'Pennsylvania', 'us')
+        )
         self.assertIn('User-Agent', get.call_args.kwargs['headers'])
         self.assertEqual(lookups.get('breezewood', 'PA'), [39.9987, -78.2389])
 
     def test_falls_back_to_free_text_search(self):
         lookups = NominatimCache(self.path)
-        with mock.patch.object(nominatim.requests, 'get', side_effect=[reply([]), reply([{'lat': '1.5', 'lon': '2.5'}])]) as get:
+        with mock.patch.object(
+            nominatim.requests, 'get', side_effect=[reply([]), reply([{'lat': '1.5', 'lon': '2.5'}])]
+        ) as get:
             self.assertEqual(lookups.fetch('Round O', 'SC'), [1.5, 2.5])
         self.assertEqual(get.call_args.kwargs['params']['q'], 'Round O, South Carolina, USA')
 
@@ -89,7 +95,9 @@ class GeocodeMissingTests(TestCase):
         return output.getvalue(), errors.getvalue()
 
     def test_looks_up_only_the_unknown_town_and_saves_the_answer(self):
-        with mock.patch.object(nominatim.requests, 'get', return_value=reply([{'lat': '39.9987', 'lon': '-78.2389'}])) as get:
+        with mock.patch.object(
+            nominatim.requests, 'get', return_value=reply([{'lat': '39.9987', 'lon': '-78.2389'}])
+        ) as get:
             self.run_import()
         get.assert_called_once()  # Breezewood; Atlantis is already a known miss
         self.assertEqual(FuelStation.objects.get(opis_id=3).place.source, Place.SOURCE_NOMINATIM)

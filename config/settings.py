@@ -171,9 +171,7 @@ else:
 # It shows the inside of the server to whoever can reach it, so it is opt-in:
 # the local docker compose stack turns it on and nothing else should. It is
 # never loaded for the test suite.
-DEBUG_TOOLBAR = (
-    os.environ.get('DJANGO_DEBUG_TOOLBAR', '').lower() in ('1', 'true', 'yes') and sys.argv[1:2] != ['test']
-)
+DEBUG_TOOLBAR = os.environ.get('DJANGO_DEBUG_TOOLBAR', '').lower() in ('1', 'true', 'yes') and sys.argv[1:2] != ['test']
 if DEBUG_TOOLBAR:
     if os.environ.get('DJANGO_SECURE', '').lower() in ('1', 'true', 'yes'):
         raise ImproperlyConfigured('DJANGO_DEBUG_TOOLBAR must not be set on a deployment (DJANGO_SECURE is on).')
@@ -196,7 +194,7 @@ if DEBUG_TOOLBAR:
     ]
     DEBUG_TOOLBAR_CONFIG = {
         'SHOW_TOOLBAR_CALLBACK': 'config.toolbar.show_toolbar',
-        'SHOW_COLLAPSED': True,   # a small handle on the edge of the page until it is clicked
+        'SHOW_COLLAPSED': True,  # a small handle on the edge of the page until it is clicked
         'UPDATE_ON_FETCH': True,  # follow the page's API calls, so the panels describe the plan on screen
         'RESULTS_CACHE_SIZE': 50,
     }

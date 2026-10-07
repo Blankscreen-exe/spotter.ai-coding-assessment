@@ -79,7 +79,9 @@ class Command(BaseCommand):
         aliases = sum(place.is_alias for place in places)
         self.stdout.write(self.style.SUCCESS(f'Loaded {len(places) - aliases} places and {aliases} aliases.'))
         if unlinked:
-            self.stdout.write(self.style.WARNING(
-                f'{unlinked} stations pointed at the replaced places and are now unlocated. '
-                'Run "python manage.py import_stations" to link them again.'
-            ))
+            self.stdout.write(
+                self.style.WARNING(
+                    f'{unlinked} stations pointed at the replaced places and are now unlocated. '
+                    'Run "python manage.py import_stations" to link them again.'
+                )
+            )

@@ -23,6 +23,7 @@ class RouteRequestSerializer(serializers.Serializer):
 
 # ---------- a planned trip ----------
 
+
 class Rounded(serializers.FloatField):
     """A number given to a fixed count of decimal places."""
 
@@ -152,6 +153,7 @@ class TripSerializer(serializers.Serializer):
 
 # ---------- signing in ----------
 
+
 class SignInSerializer(serializers.Serializer):
     username = serializers.CharField()
     password = serializers.CharField(trim_whitespace=False)
@@ -176,6 +178,7 @@ class EditorSerializer(serializers.Serializer):
 
 
 # ---------- server settings ----------
+
 
 class SettingStateSerializer(serializers.Serializer):
     key = serializers.CharField()
@@ -242,14 +245,15 @@ class SettingsChangeSerializer(serializers.Serializer):
                 problems[f'provider_keys.{provider}'] = ['The API key is empty.']
         # Switching to a provider that has no key would break every request after it.
         wanted = parsed.get(conf.ROUTING_PROVIDER)
-        if (wanted in conf.PROVIDERS_NEEDING_A_KEY and wanted not in keys
-                and wanted not in server_settings.providers_with_a_key()):
+        if (
+            wanted in conf.PROVIDERS_NEEDING_A_KEY
+            and wanted not in keys
+            and wanted not in server_settings.providers_with_a_key()
+        ):
             problems[conf.ROUTING_PROVIDER] = ['Store an API key for this provider before switching to it.']
         if problems:
             raise serializers.ValidationError(problems)
         return {'settings': parsed, 'provider_keys': {provider: secret.strip() for provider, secret in keys.items()}}
 
     def save(self):
-        server_settings.change(
-            **self.validated_data, changed_by=self.context['request'].user.get_username()
-        )
+        server_settings.change(**self.validated_data, changed_by=self.context['request'].user.get_username())

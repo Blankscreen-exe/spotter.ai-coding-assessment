@@ -36,10 +36,16 @@ class AuthorDetailsTests(SimpleTestCase):
         self.assertEqual(code_spans("<b>it's</b> `<i>`"), '&lt;b&gt;it&#x27;s&lt;/b&gt; <code>&lt;i&gt;</code>')
 
     def test_links_get_short_text_and_empty_ones_are_dropped(self):
-        details = {'note': {}, 'project': {}, 'decisions': {},
-                   'links': [{'kind': 'linkedin', 'label': 'LinkedIn', 'url': 'https://www.linkedin.com/in/ada/'},
-                             {'kind': 'email', 'label': 'Email', 'url': 'mailto:ada@example.com'},
-                             {'kind': 'x', 'label': 'X', 'url': ''}]}
+        details = {
+            'note': {},
+            'project': {},
+            'decisions': {},
+            'links': [
+                {'kind': 'linkedin', 'label': 'LinkedIn', 'url': 'https://www.linkedin.com/in/ada/'},
+                {'kind': 'email', 'label': 'Email', 'url': 'mailto:ada@example.com'},
+                {'kind': 'x', 'label': 'X', 'url': ''},
+            ],
+        }
         with mock.patch.object(author, 'AUTHOR', details):
             page = author_for_page()
         self.assertEqual([link['text'] for link in page['links']], ['linkedin.com/in/ada', 'ada@example.com'])
@@ -53,7 +59,7 @@ class AboutDrawerTests(TestCase):
 
     def drawer(self):
         content = self.page().content.decode()
-        return content[content.index('id="about"'):content.index('id="planner-config"')]
+        return content[content.index('id="about"') : content.index('id="planner-config"')]
 
     def test_drawer_is_the_note_then_the_links(self):
         drawer = self.drawer()
@@ -73,8 +79,12 @@ class AboutDrawerTests(TestCase):
         self.assertNotIn('<h2', self.drawer())
 
     def test_empty_details_are_left_out_and_text_is_escaped(self):
-        details = {'note': {'greeting': 'Hi <b>', 'paragraphs': [], 'signoff': ''}, 'links': [],
-                   'project': {'label': '', 'url': ''}, 'decisions': {'label': '', 'url': ''}}
+        details = {
+            'note': {'greeting': 'Hi <b>', 'paragraphs': [], 'signoff': ''},
+            'links': [],
+            'project': {'label': '', 'url': ''},
+            'decisions': {'label': '', 'url': ''},
+        }
         with mock.patch.object(author, 'AUTHOR', details):
             drawer = self.drawer()
         self.assertIn('Hi &lt;b&gt;', drawer)

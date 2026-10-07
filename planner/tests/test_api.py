@@ -39,11 +39,22 @@ class TripFixture(TestCase):
             start=1,
         ):
             FuelStation.objects.create(
-                opis_id=number, name=f'{town} Truck Stop', address='I-70, EXIT 1',
-                city=town, state='KS', price=price, place=place(town, 'KS', lon),
+                opis_id=number,
+                name=f'{town} Truck Stop',
+                address='I-70, EXIT 1',
+                city=town,
+                state='KS',
+                price=price,
+                place=place(town, 'KS', lon),
             )
         FuelStation.objects.create(
-            opis_id=99, name='Nowhere Fuel', address='?', city='Nowhere', state='KS', price='1.00', place=None,
+            opis_id=99,
+            name='Nowhere Fuel',
+            address='?',
+            city='Nowhere',
+            state='KS',
+            price='1.00',
+            place=None,
         )
 
     def setUp(self):
@@ -51,7 +62,8 @@ class TripFixture(TestCase):
         reset_index()
         self.addCleanup(reset_index)
         patcher = mock.patch.object(
-            PROVIDERS[conf.PROVIDER_OSRM], 'route',
+            PROVIDERS[conf.PROVIDER_OSRM],
+            'route',
             return_value=Route(conf.PROVIDER_OSRM, ROAD, ROAD_MILES, 16 * 3600),
         )
         self.route_call = patcher.start()
@@ -136,8 +148,18 @@ class RouteApiTests(TripFixture):
         self.assertEqual([s['city'] for s in stations], ['Wayne', 'Brook', 'Carmel', 'Dover'])  # in route order
         self.assertEqual(
             sorted(stations[0]),
-            ['address', 'city', 'lat', 'lon', 'mile_marker', 'miles_off_route', 'name', 'price_per_gallon',
-             'state', 'station_id'],
+            [
+                'address',
+                'city',
+                'lat',
+                'lon',
+                'mile_marker',
+                'miles_off_route',
+                'name',
+                'price_per_gallon',
+                'state',
+                'station_id',
+            ],
         )
         # The chosen stops are among them, described the same way.
         for stop in body['fuel_stops']:
@@ -145,7 +167,9 @@ class RouteApiTests(TripFixture):
 
     def test_stations_it_chose_from_also_come_with_a_cached_plan_and_by_get(self):
         first = self.plan(include_candidates=True).json()
-        again = self.client.get(self.url, {'start': 'Alpha, KS', 'finish': 'Omega, OH', 'include_candidates': 'true'}).json()
+        again = self.client.get(
+            self.url, {'start': 'Alpha, KS', 'finish': 'Omega, OH', 'include_candidates': 'true'}
+        ).json()
         self.assertEqual(again['meta']['served_from'], 'plan cache')
         self.assertEqual(again['candidate_stations'], first['candidate_stations'])
         self.assertNotIn('include_', again['map_url'])  # the link to the map carries the trip, not response options
@@ -214,8 +238,14 @@ class SettingsApiTests(TestCase):
         self.assertEqual(set(by_key), set(conf.DEFINITIONS))
         self.assertEqual(
             by_key[conf.STOP_COST],
-            {'key': 'stops.cost_per_stop', 'label': 'Cost per stop', 'value': 8.0, 'default': 5.0, 'unit': 'USD',
-             'description': conf.DEFINITIONS[conf.STOP_COST].help_text},
+            {
+                'key': 'stops.cost_per_stop',
+                'label': 'Cost per stop',
+                'value': 8.0,
+                'default': 5.0,
+                'unit': 'USD',
+                'description': conf.DEFINITIONS[conf.STOP_COST].help_text,
+            },
         )
         self.assertEqual(by_key[conf.RANGE_MILES]['value'], 500.0)
         self.assertEqual(by_key[conf.ROUTING_PROVIDER]['value'], 'osrm')
@@ -224,10 +254,18 @@ class SettingsApiTests(TestCase):
         providers = {provider['name']: provider for provider in self.settings()['providers']}
         self.assertEqual(
             providers['osrm'],
-            {'name': 'osrm', 'label': 'OSRM public server (no key)', 'active': True, 'needs_key': False,
-             'has_key': False, 'key_page': None},
+            {
+                'name': 'osrm',
+                'label': 'OSRM public server (no key)',
+                'active': True,
+                'needs_key': False,
+                'has_key': False,
+                'key_page': None,
+            },
         )
-        self.assertEqual((providers['openrouteservice']['active'], providers['openrouteservice']['needs_key']), (False, True))
+        self.assertEqual(
+            (providers['openrouteservice']['active'], providers['openrouteservice']['needs_key']), (False, True)
+        )
 
     def test_says_where_to_get_a_key_for_a_provider_that_needs_one(self):
         providers = {provider['name']: provider for provider in self.settings()['providers']}
@@ -268,7 +306,9 @@ class RouteMapTests(TestCase):
     def config(self):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
-        embedded = re.search(r'<script id="planner-config" type="application/json">(.*?)</script>', response.content.decode())
+        embedded = re.search(
+            r'<script id="planner-config" type="application/json">(.*?)</script>', response.content.decode()
+        )
         return json.loads(embedded.group(1))
 
     def script(self):
@@ -276,7 +316,9 @@ class RouteMapTests(TestCase):
 
     def test_site_root_opens_the_page(self):
         response = self.client.get('/', {'start': 'Alpha, KS', 'finish': 'Omega, OH'})
-        self.assertRedirects(response, self.url + '?start=Alpha%2C+KS&finish=Omega%2C+OH', fetch_redirect_response=False)
+        self.assertRedirects(
+            response, self.url + '?start=Alpha%2C+KS&finish=Omega%2C+OH', fetch_redirect_response=False
+        )
         self.assertEqual(response.status_code, 302)  # temporary, so browsers do not pin it
 
     def test_page_is_told_where_the_api_is(self):
@@ -299,8 +341,8 @@ class RouteMapTests(TestCase):
         content = self.client.get(self.url).content.decode()
         self.assertNotIn('type="range"', content)
         for name in ('cost', 'fuel'):
-            counter = content[content.index(f'<div class="knob" id="{name}"'):]
-            counter = counter[:counter.index('</div>')]
+            counter = content[content.index(f'<div class="knob" id="{name}"') :]
+            counter = counter[: counter.index('</div>')]
             # Lower on the left, raise on the right, the number between them.
             self.assertLess(counter.index('data-step="-1"'), counter.index('<output>'))
             self.assertLess(counter.index('<output>'), counter.index('data-step="1"'))
@@ -328,7 +370,7 @@ class RouteMapTests(TestCase):
 
     def test_zoom_buttons_sit_in_the_trip_bar_in_place_of_the_map_corner_control(self):
         content = self.client.get(self.url).content.decode()
-        trip_bar = content[content.index('id="tripBar"'):content.index('id="tools"')]
+        trip_bar = content[content.index('id="tripBar"') : content.index('id="tools"')]
         self.assertLess(trip_bar.index('id="change"'), trip_bar.index('id="zoomOut"'))
         self.assertIn('id="zoomOut" aria-label="Zoom out" title="Zoom out"', trip_bar)
         self.assertIn('id="zoomIn" aria-label="Zoom in" title="Zoom in"', trip_bar)
@@ -336,7 +378,7 @@ class RouteMapTests(TestCase):
 
     def test_bottom_drawer_starts_closed_with_only_its_tab_names(self):
         content = self.client.get(self.url).content.decode()
-        dock = content[content.index('id="dock"'):content.index('id="onboarding"')]
+        dock = content[content.index('id="dock"') : content.index('id="onboarding"')]
         self.assertEqual(dock.count('class="tab" aria-expanded="false" aria-controls="panel"'), 5)
         self.assertIn('id="collapse" hidden', dock)
         self.assertNotIn('dock-open', content.split('<body')[1].split('>')[0])
@@ -373,8 +415,27 @@ class RouteMapTests(TestCase):
         # Station names and error messages come from data and from what the user typed, and
         # parts of the page are built as HTML strings. A bare ${...} of such text would be
         # an injection hole, so each must be wrapped in esc(). Popups use textContent instead.
-        html_builders = self.script().split('function popup(')[0] + self.script().split('// ---------- fuel timeline')[1]
-        for text in ('stop.name', 's.name', 's.city', 's.state', 'stop.city', 'body.start.name', 'body.finish.name',
-                     'error.message', 'error.code', 'example.label', 'meta.served_from', 'meta.routing_provider',
-                     'setting.label', 'setting.description', 'setting.key', 'provider.label', 'value.now', 'value.usual'):
+        html_builders = (
+            self.script().split('function popup(')[0] + self.script().split('// ---------- fuel timeline')[1]
+        )
+        for text in (
+            'stop.name',
+            's.name',
+            's.city',
+            's.state',
+            'stop.city',
+            'body.start.name',
+            'body.finish.name',
+            'error.message',
+            'error.code',
+            'example.label',
+            'meta.served_from',
+            'meta.routing_provider',
+            'setting.label',
+            'setting.description',
+            'setting.key',
+            'provider.label',
+            'value.now',
+            'value.usual',
+        ):
             self.assertNotRegex(html_builders, r'\$\{\s*' + re.escape(text) + r'\s*\}', text)

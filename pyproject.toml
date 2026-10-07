@@ -12,3 +12,7 @@ select = ["E", "F", "W", "I", "B", "UP", "DJ", "SIM", "C4"]
 
 [tool.ruff.format]
 quote-style = "single"
+
+[tool.ruff.lint.per-file-ignores]
+# In a test, one "with" inside another reads in the order things are set up.
+"planner/tests/*" = ["SIM117"]

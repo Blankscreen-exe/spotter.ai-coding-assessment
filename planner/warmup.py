@@ -28,5 +28,9 @@ def warm_up():
     finally:
         connections.close_all()
     connected = provider.connect()
-    logger.info('Warm-up: %d stations in memory, %s connection %s.',
-                stations, provider.label, 'open' if connected else 'not available')
+    logger.info(
+        'Warm-up: %d stations in memory, %s connection %s.',
+        stations,
+        provider.label,
+        'open' if connected else 'not available',
+    )

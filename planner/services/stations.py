@@ -23,6 +23,7 @@ SAMPLE_SPACING_MILES = 1.0
 CELL_DEGREES = 0.25
 CHUNK = 1024
 
+
 @dataclass(frozen=True, slots=True)
 class Station:
     """A fuel station as the planner sees it: what it charges, and where its town is."""
@@ -85,8 +86,14 @@ def get_index() -> StationIndex:
     The server loads it as it starts (see warmup.py), before any request can ask.
     """
     rows = FuelStation.objects.filter(place__isnull=False).values(
-        'opis_id', 'name', 'address', 'city', 'state', 'price',
-        lat=F('place__lat'), lon=F('place__lon'),
+        'opis_id',
+        'name',
+        'address',
+        'city',
+        'state',
+        'price',
+        lat=F('place__lat'),
+        lon=F('place__lon'),
     )
     return StationIndex([Station(**{**row, 'price': float(row['price'])}) for row in rows])
 
@@ -96,8 +103,9 @@ def reset_index() -> None:
     get_index.cache_clear()
 
 
-def stations_along(coordinates, route_miles: float, corridor_miles: float,
-                   index: StationIndex | None = None) -> list[RouteStation]:
+def stations_along(
+    coordinates, route_miles: float, corridor_miles: float, index: StationIndex | None = None
+) -> list[RouteStation]:
     """Stations within corridor_miles of the route, with their mile marker.
 
     coordinates is the route as [[lon, lat], ...]. Mile markers are scaled so
@@ -122,16 +130,21 @@ def stations_along(coordinates, route_miles: float, corridor_miles: float,
     lat_reach = corridor_miles / 69.0
     lon_reach = lat_reach / max(0.2, np.cos(np.radians(np.abs(lat).max())))
     row_span, column_span = int(lat_reach / CELL_DEGREES) + 1, int(lon_reach / CELL_DEGREES) + 1
-    route_cells = np.unique(np.concatenate([
-        cell_ids(sample_lat, sample_lon, row, column)
-        for row in range(-row_span, row_span + 1) for column in range(-column_span, column_span + 1)
-    ]))
+    route_cells = np.unique(
+        np.concatenate(
+            [
+                cell_ids(sample_lat, sample_lon, row, column)
+                for row in range(-row_span, row_span + 1)
+                for column in range(-column_span, column_span + 1)
+            ]
+        )
+    )
     nearby = np.flatnonzero(np.isin(index.cells, route_cells))
 
     scale = route_miles / along[-1]
     found = []
     for start in range(0, len(nearby), CHUNK):
-        chunk = nearby[start:start + CHUNK]
+        chunk = nearby[start : start + CHUNK]
         closeness = index.vectors[chunk] @ sample_vectors.T
         nearest = closeness.argmax(axis=1)
         chord = np.sqrt(np.clip(2.0 - 2.0 * closeness[np.arange(len(chunk)), nearest], 0.0, None))

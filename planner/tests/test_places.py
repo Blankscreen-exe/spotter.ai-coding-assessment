@@ -36,15 +36,17 @@ class ResolveLocationTests(TestCase):
         def place(name, state, lat, lon, land=10.0, alias=False):
             return Place(name=name, state=state, key=normalize(name), lat=lat, lon=lon, land_sqmi=land, is_alias=alias)
 
-        Place.objects.bulk_create([
-            place('Chicago', 'IL', 41.84, -87.68),
-            place('St. Louis', 'MO', 38.64, -90.24),
-            place('New York', 'NY', 40.66, -73.94),
-            place('Boise City', 'ID', 43.60, -116.23),
-            place('Springfield', 'IL', 39.79, -89.64, land=60),
-            place('Springfield', 'MO', 37.19, -93.29, land=82),
-            place('Nashville', 'TN', 36.17, -86.78, alias=True),
-        ])
+        Place.objects.bulk_create(
+            [
+                place('Chicago', 'IL', 41.84, -87.68),
+                place('St. Louis', 'MO', 38.64, -90.24),
+                place('New York', 'NY', 40.66, -73.94),
+                place('Boise City', 'ID', 43.60, -116.23),
+                place('Springfield', 'IL', 39.79, -89.64, land=60),
+                place('Springfield', 'MO', 37.19, -93.29, land=82),
+                place('Nashville', 'TN', 36.17, -86.78, alias=True),
+            ]
+        )
 
     def test_city_and_state_code(self):
         location = resolve_location('Chicago, IL')

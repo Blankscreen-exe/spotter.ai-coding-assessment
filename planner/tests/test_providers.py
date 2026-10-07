@@ -30,9 +30,16 @@ class OSRMTests(SimpleTestCase):
         self.provider = get_provider(conf.PROVIDER_OSRM)
 
     def test_builds_one_request_and_parses_the_route(self):
-        body = {'code': 'Ok', 'routes': [{
-            'geometry': ENCODED_LINE, 'distance': 1609344.0, 'duration': 7200.0,
-        }]}
+        body = {
+            'code': 'Ok',
+            'routes': [
+                {
+                    'geometry': ENCODED_LINE,
+                    'distance': 1609344.0,
+                    'duration': 7200.0,
+                }
+            ],
+        }
         with mock.patch.object(requests.Session, 'request', return_value=response(200, body)) as send:
             route = self.provider.route(CHICAGO, HOUSTON)
         send.assert_called_once()
@@ -82,9 +89,7 @@ class OpenRouteServiceTests(TestCase):
         self.assertEqual(method, 'POST')
         self.assertTrue(url.endswith('/v2/directions/driving-car'))
         self.assertEqual(send.call_args.kwargs['headers'], {'Authorization': 'secret-key'})
-        self.assertEqual(
-            send.call_args.kwargs['json']['coordinates'], [[-87.68, 41.84], [-95.39, 29.79]]
-        )
+        self.assertEqual(send.call_args.kwargs['json']['coordinates'], [[-87.68, 41.84], [-95.39, 29.79]])
         self.assertEqual(route.coordinates.tolist(), LINE)
         self.assertAlmostEqual(route.distance_miles, 1000.0)
 
@@ -103,6 +108,8 @@ class OpenRouteServiceTests(TestCase):
 
     def test_quota_exceeded_is_reported(self):
         ProviderCredential.objects.create(provider=conf.PROVIDER_ORS, api_key='secret-key')
-        with mock.patch.object(requests.Session, 'request', return_value=response(429, {'error': 'Rate limit exceeded'})):
+        with mock.patch.object(
+            requests.Session, 'request', return_value=response(429, {'error': 'Rate limit exceeded'})
+        ):
             with self.assertRaisesMessage(RoutingProviderError, 'HTTP 429: Rate limit exceeded'):
                 self.provider.route(CHICAGO, HOUSTON)

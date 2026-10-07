@@ -82,7 +82,9 @@ class SettingsEditingTests(TestCase):
         self.client.force_login(self.admin)
         response = patch(self.client, {'settings': {conf.STOP_COST: 8, conf.MPG: '12.5', conf.RANGE_MILES: 400}})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual((self.value(conf.STOP_COST), self.value(conf.MPG), self.value(conf.RANGE_MILES)), ('8', '12.5', '400'))
+        self.assertEqual(
+            (self.value(conf.STOP_COST), self.value(conf.MPG), self.value(conf.RANGE_MILES)), ('8', '12.5', '400')
+        )
         returned = {setting['key']: setting['value'] for setting in response.json()['settings']}
         self.assertEqual((returned[conf.STOP_COST], returned[conf.MPG]), (8.0, 12.5))
         self.assertEqual(server_settings.load()[conf.RANGE_MILES], 400.0)
@@ -95,7 +97,9 @@ class SettingsEditingTests(TestCase):
 
     def test_one_bad_value_saves_nothing(self):
         self.client.force_login(self.admin)
-        response = patch(self.client, {'settings': {conf.STOP_COST: 8, conf.MPG: 0, conf.RANGE_MILES: 'far', 'made.up': 1}})
+        response = patch(
+            self.client, {'settings': {conf.STOP_COST: 8, conf.MPG: 0, conf.RANGE_MILES: 'far', 'made.up': 1}}
+        )
         self.assertEqual(response.status_code, 400)
         fields = response.json()['error']['fields']
         self.assertEqual(fields[conf.MPG], ['Fuel economy must be greater than zero.'])
@@ -105,7 +109,12 @@ class SettingsEditingTests(TestCase):
 
     def test_values_that_would_break_planning_are_refused(self):
         self.client.force_login(self.admin)
-        for key, bad in [(conf.STOP_COST, -1), (conf.RANGE_MILES, 'inf'), (conf.MPG, 'nan'), (conf.ROUTING_PROVIDER, 'google')]:
+        for key, bad in [
+            (conf.STOP_COST, -1),
+            (conf.RANGE_MILES, 'inf'),
+            (conf.MPG, 'nan'),
+            (conf.ROUTING_PROVIDER, 'google'),
+        ]:
             self.assertEqual(patch(self.client, {'settings': {key: bad}}).status_code, 400, f'{key}={bad}')
 
     def test_empty_change_is_refused(self):
@@ -124,13 +133,19 @@ class SettingsEditingTests(TestCase):
 
     def test_key_and_switch_in_one_request(self):
         self.client.force_login(self.admin)
-        response = patch(self.client, {
-            'settings': {conf.ROUTING_PROVIDER: conf.PROVIDER_ORS}, 'provider_keys': {conf.PROVIDER_ORS: '  the-secret-key '},
-        })
+        response = patch(
+            self.client,
+            {
+                'settings': {conf.ROUTING_PROVIDER: conf.PROVIDER_ORS},
+                'provider_keys': {conf.PROVIDER_ORS: '  the-secret-key '},
+            },
+        )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(ProviderCredential.objects.get().api_key, 'the-secret-key')
         providers = {provider['name']: provider for provider in response.json()['providers']}
-        self.assertEqual((providers['openrouteservice']['active'], providers['openrouteservice']['has_key']), (True, True))
+        self.assertEqual(
+            (providers['openrouteservice']['active'], providers['openrouteservice']['has_key']), (True, True)
+        )
         # Encrypted in the table, and never sent back.
         with connection.cursor() as cursor:
             cursor.execute('SELECT api_key FROM planner_providercredential')
@@ -166,7 +181,9 @@ class SettingsEditingTests(TestCase):
         self.assertEqual(self.value(conf.STOP_COST), '5')
         browser.get(reverse('route-map'))  # the page hands out the token
         token = browser.cookies['csrftoken'].value
-        self.assertEqual(patch(browser, {'settings': {conf.STOP_COST: 0}}, headers={'X-CSRFToken': token}).status_code, 200)
+        self.assertEqual(
+            patch(browser, {'settings': {conf.STOP_COST: 0}}, headers={'X-CSRFToken': token}).status_code, 200
+        )
         self.assertEqual(self.value(conf.STOP_COST), '0')
 
 
@@ -188,7 +205,9 @@ class SessionTests(TestCase):
         self.assertFalse(self.client.get(SESSION_URL).json()['signed_in'])
         response = self.sign_in()
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {'signed_in': True, 'username': 'admin', 'can_edit': True, 'can_set_keys': True})
+        self.assertEqual(
+            response.json(), {'signed_in': True, 'username': 'admin', 'can_edit': True, 'can_set_keys': True}
+        )
         self.assertTrue(self.client.get(SESSION_URL).json()['signed_in'])
         self.assertEqual(patch(self.client, {'settings': {conf.MPG: 11}}).status_code, 200)
 

@@ -46,13 +46,17 @@ class Purchase:
     arrival_range_miles: float
 
 
-def plan_fuel_stops(candidates: Iterable[Candidate], trip_miles: float, range_miles: float, mpg: float,
-                    start_range_miles: float, stop_cost: float = 0.0) -> list[Purchase]:
+def plan_fuel_stops(
+    candidates: Iterable[Candidate],
+    trip_miles: float,
+    range_miles: float,
+    mpg: float,
+    start_range_miles: float,
+    stop_cost: float = 0.0,
+) -> list[Purchase]:
     """Return the Purchases, in route order, that minimise the objective."""
     start_range_miles = min(start_range_miles, range_miles)
-    stations = sorted(
-        (c for c in candidates if 0 <= c.mile <= trip_miles), key=lambda c: (c.mile, c.price)
-    )
+    stations = sorted((c for c in candidates if 0 <= c.mile <= trip_miles), key=lambda c: (c.mile, c.price))
     if trip_miles <= start_range_miles + EPSILON:
         return []
     _check_reachable(stations, trip_miles, range_miles, start_range_miles)
@@ -175,19 +179,23 @@ def _cheapest_with_stop_cost(stations, trip_miles, range_miles, mpg, start_range
                     pick += 1
                 if frontier[pick].fuel >= distance - EPSILON:
                     continue  # already carrying enough to pass this station by
-                arrivals[ahead].append(_Arrival(
-                    fuel=0.0,
-                    cost=values[pick] + distance * per_mile + stop_cost,
-                    previous=(here, pick),
-                    gallons=(distance - frontier[pick].fuel) / mpg,
-                ))
+                arrivals[ahead].append(
+                    _Arrival(
+                        fuel=0.0,
+                        cost=values[pick] + distance * per_mile + stop_cost,
+                        previous=(here, pick),
+                        gallons=(distance - frontier[pick].fuel) / mpg,
+                    )
+                )
             elif frontier[last].fuel < range_miles - EPSILON:
-                arrivals[ahead].append(_Arrival(
-                    fuel=range_miles - distance,
-                    cost=values[last] + range_miles * per_mile + stop_cost,
-                    previous=(here, last),
-                    gallons=(range_miles - frontier[last].fuel) / mpg,
-                ))
+                arrivals[ahead].append(
+                    _Arrival(
+                        fuel=range_miles - distance,
+                        cost=values[last] + range_miles * per_mile + stop_cost,
+                        previous=(here, last),
+                        gallons=(range_miles - frontier[last].fuel) / mpg,
+                    )
+                )
 
     if not arrivals[count]:
         raise NoFeasiblePlan('No combination of fuel stops reaches the destination.')

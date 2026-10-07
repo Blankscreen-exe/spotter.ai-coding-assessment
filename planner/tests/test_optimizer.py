@@ -37,9 +37,7 @@ def lowest_possible_bill(stations, trip_miles, start_range):
     Returns None when some mile has no station behind it in range.
     """
     sources = [(start_range - RANGE, 0.0)] + [(c.mile, c.price) for c in stations]
-    edges = sorted({0.0, trip_miles} | {
-        x for mile, _ in sources for x in (mile, mile + RANGE) if 0 < x < trip_miles
-    })
+    edges = sorted({0.0, trip_miles} | {x for mile, _ in sources for x in (mile, mile + RANGE) if 0 < x < trip_miles})
     total = 0.0
     for left, right in zip(edges, edges[1:], strict=False):
         middle = (left + right) / 2
@@ -84,13 +82,13 @@ class GreedyTests(SimpleTestCase):
     def test_buys_just_enough_to_reach_a_cheaper_station(self):
         stations = [Candidate(400, 4.0), Candidate(600, 3.0)]
         first, second = self.plan(stations, 1000)
-        self.assertAlmostEqual(first.gallons, 10.0)   # 100 miles short of mile 600
+        self.assertAlmostEqual(first.gallons, 10.0)  # 100 miles short of mile 600
         self.assertAlmostEqual(second.gallons, 40.0)  # arrives empty, needs 400 miles
 
     def test_fills_up_when_nothing_cheaper_is_in_reach(self):
         stations = [Candidate(400, 3.0), Candidate(800, 4.0)]
         first, second = self.plan(stations, 1100)
-        self.assertAlmostEqual(first.gallons, 40.0)   # tank holds 50, arrives with 10
+        self.assertAlmostEqual(first.gallons, 40.0)  # tank holds 50, arrives with 10
         self.assertAlmostEqual(second.gallons, 20.0)
 
     def test_partial_starting_fuel(self):

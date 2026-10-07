@@ -13,7 +13,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('provider', choices=[conf.PROVIDER_ORS])
         parser.add_argument(
-            '--from-env', metavar='VAR',
+            '--from-env',
+            metavar='VAR',
             help='Read the key from this environment variable instead of prompting.',
         )
         parser.add_argument('--activate', action='store_true', help='Also set routing.provider to this provider.')

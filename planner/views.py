@@ -112,22 +112,26 @@ class SessionView(APIView):
 def route_map(request):
     """The page people use. It plans nothing itself: its script calls the API above."""
     settings_now = server_settings.load()
-    return render(request, 'planner/map.html', {
-        'author': author_for_page(),
-        'config': {
-            'apiUrl': reverse('route-plan'),
-            'healthUrl': reverse('health'),
-            'settingsUrl': reverse('settings'),
-            'sessionUrl': reverse('session'),
-            # The page's two counters start from what the server would use anyway.
-            'defaults': {
-                'stopCost': settings_now[conf.STOP_COST],
-                'rangeMiles': settings_now[conf.RANGE_MILES],
-                'mpg': settings_now[conf.MPG],
-                'provider': settings_now[conf.ROUTING_PROVIDER],
+    return render(
+        request,
+        'planner/map.html',
+        {
+            'author': author_for_page(),
+            'config': {
+                'apiUrl': reverse('route-plan'),
+                'healthUrl': reverse('health'),
+                'settingsUrl': reverse('settings'),
+                'sessionUrl': reverse('session'),
+                # The page's two counters start from what the server would use anyway.
+                'defaults': {
+                    'stopCost': settings_now[conf.STOP_COST],
+                    'rangeMiles': settings_now[conf.RANGE_MILES],
+                    'mpg': settings_now[conf.MPG],
+                    'provider': settings_now[conf.ROUTING_PROVIDER],
+                },
             },
         },
-    })
+    )
 
 
 def health(request):

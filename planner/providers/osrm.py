@@ -11,13 +11,17 @@ class OSRMProvider(RoutingProvider):
     base_url_setting = 'OSRM_BASE_URL'
 
     def route(self, start: Location, finish: Location) -> Route:
-        url = (
-            f'{self.base_url}/route/v1/driving/'
-            f'{start.lon:.6f},{start.lat:.6f};{finish.lon:.6f},{finish.lat:.6f}'
+        url = f'{self.base_url}/route/v1/driving/{start.lon:.6f},{start.lat:.6f};{finish.lon:.6f},{finish.lat:.6f}'
+        response = self._send(
+            'GET',
+            url,
+            params={
+                'overview': 'full',
+                'geometries': 'polyline',
+                'steps': 'false',
+                'alternatives': 'false',
+            },
         )
-        response = self._send('GET', url, params={
-            'overview': 'full', 'geometries': 'polyline', 'steps': 'false', 'alternatives': 'false',
-        })
         body = self._json(response)
         code = body.get('code')
         if code in ('NoRoute', 'NoSegment'):

@@ -112,6 +112,7 @@ def _money(value: float) -> Decimal:
 
 # The cache is an optimisation: if it is down, plan the trip without it.
 
+
 def _cache_get(key: str) -> Any:
     try:
         return cache.get(key)
@@ -152,8 +153,9 @@ def _thin(coordinates: np.ndarray) -> list[list[float]]:
     return np.round(coordinates[keep], 5).tolist()
 
 
-def _build_plan(route: Route, range_miles: float, mpg: float, corridor_miles: float, stop_cost: float,
-                initial_range_miles: float) -> TripPlan:
+def _build_plan(
+    route: Route, range_miles: float, mpg: float, corridor_miles: float, stop_cost: float, initial_range_miles: float
+) -> TripPlan:
     on_route = stations_along(route.coordinates, route.distance_miles, corridor_miles)
     purchases = plan_fuel_stops(
         [Candidate(mile=s.mile, price=s.station.price, ref=s) for s in on_route],
@@ -190,8 +192,13 @@ def _build_plan(route: Route, range_miles: float, mpg: float, corridor_miles: fl
     )
 
 
-def plan_trip(start_text: str, finish_text: str, provider_name: str | None = None,
-              initial_range_miles: float | None = None, stop_cost: float | None = None) -> Trip:
+def plan_trip(
+    start_text: str,
+    finish_text: str,
+    provider_name: str | None = None,
+    initial_range_miles: float | None = None,
+    stop_cost: float | None = None,
+) -> Trip:
     """Plan the drive between two places. Whatever is left out comes from the server settings."""
     started = time.perf_counter()
     config = server_settings.load()

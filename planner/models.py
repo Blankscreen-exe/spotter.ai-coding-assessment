@@ -58,9 +58,7 @@ class FuelStation(models.Model):
     price = models.DecimalField(
         max_digits=8, decimal_places=5, help_text='USD per gallon; mean of the rows sharing this OPIS ID.'
     )
-    place = models.ForeignKey(
-        Place, null=True, blank=True, on_delete=models.SET_NULL, related_name='stations'
-    )
+    place = models.ForeignKey(Place, null=True, blank=True, on_delete=models.SET_NULL, related_name='stations')
 
     class Meta:
         constraints = [
@@ -74,9 +72,7 @@ class FuelStation(models.Model):
 class Setting(models.Model):
     """One row per runtime setting. Allowed keys and defaults live in conf.py."""
 
-    key = models.CharField(
-        max_length=64, unique=True, choices=[(k, k) for k in conf.DEFINITIONS]
-    )
+    key = models.CharField(max_length=64, unique=True, choices=[(k, k) for k in conf.DEFINITIONS])
     value = models.CharField(max_length=200)
     updated_at = models.DateTimeField(auto_now=True)
 

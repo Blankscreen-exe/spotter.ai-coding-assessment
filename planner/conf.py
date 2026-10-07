@@ -68,23 +68,32 @@ PROVIDERS_NEEDING_A_KEY = set(PROVIDER_KEY_PAGES)
 
 DEFINITIONS = {
     ROUTING_PROVIDER: Definition(
-        PROVIDER_OSRM, _provider,
+        PROVIDER_OSRM,
+        _provider,
         'Routing API used when a request does not name one: osrm or openrouteservice.',
         label='Routing provider',
     ),
     CORRIDOR_MILES: Definition(
-        '5', _positive_float,
+        '5',
+        _positive_float,
         'How far from the route line a station may be and still count as on the route.',
-        label='Station corridor', unit='miles',
+        label='Station corridor',
+        unit='miles',
     ),
     RANGE_MILES: Definition(
-        '500', _positive_float, 'Distance the vehicle covers on a full tank.', label='Vehicle range', unit='miles',
+        '500',
+        _positive_float,
+        'Distance the vehicle covers on a full tank.',
+        label='Vehicle range',
+        unit='miles',
     ),
     MPG: Definition('10', _positive_float, 'Fuel economy in miles per gallon.', label='Fuel economy', unit='mpg'),
     STOP_COST: Definition(
-        '5', _non_negative_float,
+        '5',
+        _non_negative_float,
         'Dollars one extra fuel stop is worth avoiding. 0 gives the cheapest fuel bill regardless of stops.',
-        label='Cost per stop', unit='USD',
+        label='Cost per stop',
+        unit='USD',
     ),
 }
 
@@ -95,4 +104,3 @@ DISPLAY_ORDER = (ROUTING_PROVIDER, STOP_COST, RANGE_MILES, MPG, CORRIDOR_MILES)
 def to_stored(value):
     """A parsed value as the text kept in the Setting table: 8.0 is stored as "8"."""
     return f'{value:g}' if isinstance(value, float) else str(value)
-

@@ -1,6 +1,6 @@
 """Plan a few real trips and print the result. Handy for a quick manual check.
 
-    python scripts/try_trips.py "New York, NY" "Los Angeles, CA"
+python scripts/try_trips.py "New York, NY" "Los Angeles, CA"
 """
 
 import os

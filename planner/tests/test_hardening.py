@@ -23,11 +23,21 @@ A_TRIP = Trip(
     start=Location('Alpha, KS', 'Alpha, KS', 40.0, -100.0),
     finish=Location('Omega, OH', 'Omega, OH', 40.0, -80.0),
     plan=TripPlan(
-        provider='osrm', distance_miles=1059.0, duration_seconds=57600.0, geometry=[[-100.0, 40.0], [-80.0, 40.0]],
-        range_miles=500.0, mpg=10.0, initial_range_miles=500.0, stop_cost=5.0, corridor_miles=5.0,
-        stops=(), candidates=(),
+        provider='osrm',
+        distance_miles=1059.0,
+        duration_seconds=57600.0,
+        geometry=[[-100.0, 40.0], [-80.0, 40.0]],
+        range_miles=500.0,
+        mpg=10.0,
+        initial_range_miles=500.0,
+        stop_cost=5.0,
+        corridor_miles=5.0,
+        stops=(),
+        candidates=(),
     ),
-    routing_calls=0, served_from='plan cache', elapsed_ms=0.1,
+    routing_calls=0,
+    served_from='plan cache',
+    elapsed_ms=0.1,
 )
 
 
@@ -106,7 +116,9 @@ class HealthTests(TestCase):
 
     def test_ok_when_stations_are_loaded(self):
         place = Place.objects.create(name='Alpha', state='KS', key='alpha', lat=40.0, lon=-100.0)
-        FuelStation.objects.create(opis_id=1, name='A', address='x', city='Alpha', state='KS', price='3.00', place=place)
+        FuelStation.objects.create(
+            opis_id=1, name='A', address='x', city='Alpha', state='KS', price='3.00', place=place
+        )
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {'status': 'ok', 'stations': 1})
@@ -141,9 +153,18 @@ class DebugToolbarTests(SimpleTestCase):
             '"config": getattr(settings, "DEBUG_TOOLBAR_CONFIG", {}), "caches": sorted(settings.CACHES)}))'
         )
         return subprocess.run(
-            [sys.executable, '-c', program], capture_output=True, text=True, cwd=settings.BASE_DIR,
-            env={**os.environ, 'DJANGO_SETTINGS_MODULE': 'config.settings',
-                 'DJANGO_DEBUG_TOOLBAR': '', 'DJANGO_SECURE': '', 'REDIS_URL': '', **environment},
+            [sys.executable, '-c', program],
+            capture_output=True,
+            text=True,
+            cwd=settings.BASE_DIR,
+            env={
+                **os.environ,
+                'DJANGO_SETTINGS_MODULE': 'config.settings',
+                'DJANGO_DEBUG_TOOLBAR': '',
+                'DJANGO_SECURE': '',
+                'REDIS_URL': '',
+                **environment,
+            },
         )
 
     def test_off_unless_asked_for(self):

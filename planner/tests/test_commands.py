@@ -41,8 +41,13 @@ class ImportPlacesTests(TestCase):
         places = {(p.name, p.state): p for p in Place.objects.filter(is_alias=False)}
         self.assertEqual(
             set(places),
-            {('Abbeville', 'AL'), ('Cañon City', 'CO'), ('Nashville-Davidson', 'TN'),
-             ('Town of Pecos', 'TX'), ('Lake of the Woods', 'VA')},  # descriptors stripped, Puerto Rico skipped
+            {
+                ('Abbeville', 'AL'),
+                ('Cañon City', 'CO'),
+                ('Nashville-Davidson', 'TN'),
+                ('Town of Pecos', 'TX'),
+                ('Lake of the Woods', 'VA'),
+            },  # descriptors stripped, Puerto Rico skipped
         )
         self.assertEqual(places[('Cañon City', 'CO')].key, 'canon city')
         self.assertEqual((places[('Abbeville', 'AL')].lat, places[('Abbeville', 'AL')].lon), (31.565164, -85.259165))
@@ -63,7 +68,12 @@ class ImportPlacesTests(TestCase):
     def test_rerun_warns_that_stations_lost_their_place(self):
         self.run_import()
         FuelStation.objects.create(
-            opis_id=1, name='A', address='x', city='Abbeville', state='AL', price='3.00',
+            opis_id=1,
+            name='A',
+            address='x',
+            city='Abbeville',
+            state='AL',
+            price='3.00',
             place=Place.objects.get(name='Abbeville'),
         )
         output = self.run_import()

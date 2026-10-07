@@ -51,10 +51,7 @@ class ServerSettings:
 def load() -> dict[str, Any]:
     """Every setting as a parsed value, read with a single query."""
     stored = dict(Setting.objects.values_list('key', 'value'))
-    return {
-        key: definition.parse(stored.get(key, definition.default))
-        for key, definition in conf.DEFINITIONS.items()
-    }
+    return {key: definition.parse(stored.get(key, definition.default)) for key, definition in conf.DEFINITIONS.items()}
 
 
 def providers_with_a_key() -> set[str]:
@@ -107,17 +104,20 @@ def change(settings: dict[str, Any], provider_keys: dict[str, str], changed_by: 
             'An API key cannot be stored until the server has an encryption key. '
             'Set CREDENTIALS_ENCRYPTION_KEYS (see the README) and restart.'
         ) from exc
-    logger.info('Settings changed by %s: %s', changed_by, ', '.join(
-        [f'{key}={conf.to_stored(value)}' for key, value in sorted(settings.items())]
-        + [f'{provider} API key' for provider in sorted(provider_keys)]
-    ) or 'nothing')
+    logger.info(
+        'Settings changed by %s: %s',
+        changed_by,
+        ', '.join(
+            [f'{key}={conf.to_stored(value)}' for key, value in sorted(settings.items())]
+            + [f'{provider} API key' for provider in sorted(provider_keys)]
+        )
+        or 'nothing',
+    )
 
 
 def _store_key(provider: str, api_key: str) -> None:
     # Written without reading the old key back, so a key that can no longer be
     # decrypted (the encryption key was replaced) can still be overwritten.
-    replaced = ProviderCredential.objects.filter(provider=provider).update(
-        api_key=api_key, updated_at=timezone.now()
-    )
+    replaced = ProviderCredential.objects.filter(provider=provider).update(api_key=api_key, updated_at=timezone.now())
     if not replaced:
         ProviderCredential.objects.create(provider=provider, api_key=api_key)

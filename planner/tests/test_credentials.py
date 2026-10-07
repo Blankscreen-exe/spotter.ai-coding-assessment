@@ -53,9 +53,7 @@ class ProviderCredentialTests(TestCase):
 
 class SettingTests(TestCase):
     def test_defaults_are_seeded_by_migration(self):
-        self.assertEqual(
-            set(Setting.objects.values_list('key', flat=True)), set(conf.DEFINITIONS)
-        )
+        self.assertEqual(set(Setting.objects.values_list('key', flat=True)), set(conf.DEFINITIONS))
 
     def test_load_settings_parses_values(self):
         Setting.objects.filter(key=conf.CORRIDOR_MILES).update(value='7.5')

@@ -8,10 +8,12 @@ MILES_PER_DEGREE_LON_AT_40N = 52.93
 
 
 def index(*positions):
-    return StationIndex([
-        Station(opis_id=n, name='', address='', city='', state='', price=3.0, lat=lat, lon=lon)
-        for n, (lat, lon) in enumerate(positions)
-    ])
+    return StationIndex(
+        [
+            Station(opis_id=n, name='', address='', city='', state='', price=3.0, lat=lat, lon=lon)
+            for n, (lat, lon) in enumerate(positions)
+        ]
+    )
 
 
 class StationsAlongTests(SimpleTestCase):
