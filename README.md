@@ -19,7 +19,7 @@ docker compose up --build
 ```
 
 The first start runs the migrations and loads the reference data, which takes a
-few seconds. Then open http://localhost:8000/map/.
+few seconds. Then open http://localhost:8000/.
 
 ### Without Docker (SQLite)
 

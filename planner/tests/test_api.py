@@ -190,6 +190,11 @@ class RouteMapTests(TestCase):
     def script(self):
         return Path(finders.find('planner/map.js')).read_text(encoding='utf-8')
 
+    def test_site_root_opens_the_page(self):
+        response = self.client.get('/', {'start': 'Alpha, KS', 'finish': 'Omega, OH'})
+        self.assertRedirects(response, self.url + '?start=Alpha%2C+KS&finish=Omega%2C+OH', fetch_redirect_response=False)
+        self.assertEqual(response.status_code, 302)  # temporary, so browsers do not pin it
+
     def test_page_is_told_where_the_api_is(self):
         config = self.config()
         self.assertEqual(config['apiUrl'], reverse('route-plan'))
