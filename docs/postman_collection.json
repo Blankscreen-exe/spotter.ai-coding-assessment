@@ -96,6 +96,13 @@
       }
     },
     {
+      "name": "Health check",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/healthz/"
+      }
+    },
+    {
       "name": "Error: ambiguous place",
       "request": {
         "method": "POST",

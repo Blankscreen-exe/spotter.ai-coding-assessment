@@ -120,8 +120,13 @@ Errors all have the shape `{"error": {"code": "...", "message": "..."}}`:
 | 400 | `location_not_found` | A place cannot be resolved, or its name is ambiguous without a state |
 | 422 | `route_not_found` | No driving route exists between the two points |
 | 422 | `no_feasible_fuel_plan` | A stretch of the route has no station within range |
+| 429 | `throttled` | More than 60 requests a minute from one client (`Retry-After` says when to retry) |
+| 500 | `internal_error` | Anything unexpected; details go to the server log, not the response |
 | 502 | `routing_provider_error` | The routing API failed or timed out |
 | 503 | `routing_provider_not_configured` | The chosen provider has no API key |
+
+`GET /healthz/` returns 200 once the database answers and the station data is
+loaded, and 503 otherwise. The Docker stack uses it as the container health check.
 
 A Postman collection with these requests is in
 [docs/postman_collection.json](docs/postman_collection.json).
@@ -164,8 +169,12 @@ cross-country route is about 12 ms to match stations and 30 ms to optimise.
 ## Configuration
 
 Runtime settings are rows in the `Setting` table, editable in the Django admin
-(`python manage.py createsuperuser`, then `/admin/`). They take effect on the
-next request.
+at `/admin/`. They take effect on the next request. Create an admin user first:
+
+```bash
+python manage.py createsuperuser                          # local
+docker compose exec web python manage.py createsuperuser  # Docker
+```
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -174,6 +183,16 @@ next request.
 | `stations.corridor_miles` | `5` | How far from the route a station may be |
 | `vehicle.range_miles` | `500` | Distance on a full tank |
 | `vehicle.mpg` | `10` | Fuel economy |
+
+Deployment settings come from the environment; `.env.example` lists them all.
+The ones that matter beyond a local run:
+
+| Variable | Meaning |
+| --- | --- |
+| `DATABASE_URL`, `REDIS_URL` | PostgreSQL and Redis. Unset means SQLite and an in-process cache |
+| `DJANGO_DEBUG`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS` | The usual Django three. The secret key is required when debug is off |
+| `DJANGO_SECURE` | `true` behind an HTTPS proxy: redirect to https, HSTS, secure cookies |
+| `API_RATE_LIMIT` | Requests per client on the route endpoint. Default `60/min`; empty disables it |
 
 ### Using OpenRouteService
 
@@ -196,9 +215,9 @@ python manage.py test                                  # SQLite
 docker compose exec web python manage.py test          # PostgreSQL
 ```
 
-82 tests. The optimizer is checked against brute force and an independent
-formula on random routes; the routing providers are mocked, so the suite makes
-no network calls.
+114 tests, 94% line coverage. The optimizer is checked against brute force and an
+independent formula on random routes. The routing providers and Nominatim are
+mocked, so the suite makes no network calls, and it always uses a private cache.
 
 ## Limitations
 
@@ -209,6 +228,17 @@ no network calls.
 - Canadian stations in the price file are ignored.
 - The station index is loaded once per server process; restart the server after
   re-importing data.
+
+## Data sources
+
+- **Fuel prices:** the file supplied with the assignment.
+- **US places:** the U.S. Census Bureau 2025 Gazetteer (public domain).
+- **Town positions the Census does not list** (`data/nominatim_cache.json`) and
+  the map tiles: © OpenStreetMap contributors, under the
+  [Open Database License](https://www.openstreetmap.org/copyright), looked up
+  through Nominatim.
+- **Routing:** the public [OSRM](https://project-osrm.org/) demo server, or
+  [OpenRouteService](https://openrouteservice.org/), both built on OpenStreetMap data.
 
 ## Layout
 
@@ -225,7 +255,10 @@ planner/
     optimizer.py           fuel stop selection
     trip.py                puts the pieces together, caching
   management/commands/     data import, credential management
-  views.py, serializers.py API and map page
+  views.py, serializers.py API, map page, health check
+  handlers.py              one JSON shape for every API error
+  throttling.py            per-client rate limit
+  warmup.py                work done once at server start
 data/                      price file, Census Gazetteer, Nominatim cache
 docs/                      brief, decision log, Postman collection
 ```

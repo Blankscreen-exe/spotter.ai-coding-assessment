@@ -245,6 +245,26 @@ One option was measured and rejected: OSRM's "simplified" route comes back in
 - **A cache outage does not fail a request.** Cache reads and writes are wrapped;
   the trip is planned without them.
 
+### 3.14 Making it production-ready without overbuilding
+
+- **The question I raised:** what would make this look production-ready without
+  over-engineering it?
+- **Decided by me, from four options Claude offered:** API hardening, frontend
+  fixes and filling the test gaps. I left out the fourth, a CI workflow.
+
+| Added | Why |
+| --- | --- |
+| Rate limit, 60 requests a minute per client | The API is open and every new trip costs a call to a free public server |
+| `GET /healthz/` | Lets Docker (or a load balancer) know when the app can actually serve; 503 until the data is loaded |
+| One JSON shape for every error, including unexpected ones | A client never gets an HTML error page, and internals are logged, not returned |
+| HTTPS settings behind `DJANGO_SECURE` | Clears Django's deploy check except two HSTS options that commit a whole domain |
+| Map page works on narrow screens, button shows progress | Found by taking screenshots: the map was squeezed to a strip at phone width |
+| Tests for the import commands, the key command, the Nominatim client | Coverage went from 85% to 94% |
+
+Deliberately not added, because each would be more to explain than it shows for
+a single endpoint: OpenAPI/Swagger pages, authentication, a task queue,
+Kubernetes manifests, PostGIS, a JavaScript framework.
+
 ## 4. Things testing caught
 
 - **GET ignored a default.** Django REST framework reads a query string like an
@@ -257,9 +277,17 @@ One option was measured and rejected: OSRM's "simplified" route comes back in
   have crashed on the new cache-clearing line. A linter caught it and there is
   now a test for the import.
 
+- **The tests were clearing the live cache.** Run inside the container they
+  used the real Redis, and several tests empty the cache. The test run now
+  always gets a private in-process cache.
+
 ## 5. How it is verified
 
-- 82 automated tests, run on both SQLite and PostgreSQL 17.
+- 114 automated tests covering 94% of lines, run on both SQLite and PostgreSQL 17.
+- The rate limit was exercised against the running stack: 65 quick requests gave
+  60 successes and 5 refusals with a `Retry-After` header.
+- The map page was checked from headless-browser screenshots at desktop and
+  narrow widths.
 - The Docker stack was rebuilt from an empty volume and exercised with real
   requests.
 - Routes were planned against the live OSRM server throughout.
@@ -273,4 +301,5 @@ One option was measured and rejected: OSRM's "simplified" route comes back in
 - The public OSRM server has no uptime guarantee and routes for cars, not trucks.
 - The station index is loaded once per server process, so workers need a
   restart after a re-import. Cached plans live for an hour.
-- There is no authentication or rate limiting; the brief did not ask for either.
+- There is no authentication; the brief did not ask for it. There is no CI
+  workflow yet either.
