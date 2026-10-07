@@ -1,4 +1,4 @@
-{% load static %}<!doctype html>
+{% load static planner_extras %}<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -104,26 +104,17 @@
     <form id="settingsForm" novalidate></form>
   </aside>
 
-  <aside class="drawer" id="about" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+  <aside class="drawer" id="about" role="dialog" aria-modal="true" aria-label="About the author">
     <header>
-      <h2 id="aboutTitle">About Me</h2>
       <button type="button" class="secondary" id="closeAbout">Close</button>
     </header>
     {% if author.note %}
       <section class="letter">
         <p class="hello">{{ author.note.greeting }}</p>
-        {% for paragraph in author.note.paragraphs %}<p>{{ paragraph }}</p>{% endfor %}
+        {% for paragraph in author.note.paragraphs %}<p>{{ paragraph|code_spans }}</p>{% endfor %}
         {% if author.note.signoff %}<p class="signoff">{{ author.note.signoff }}</p>{% endif %}
       </section>
     {% endif %}
-    <div class="who">
-      <div class="avatar" aria-hidden="true">{{ author.initials }}</div>
-      <div>
-        <b class="person">{{ author.name }}</b>
-        {% if author.details %}<span class="note">{{ author.details }}</span>{% endif %}
-      </div>
-    </div>
-    {% if author.bio %}<p class="bio">{{ author.bio }}</p>{% endif %}
     <ul class="links">
       {% for link in author.links %}
         <li><a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">

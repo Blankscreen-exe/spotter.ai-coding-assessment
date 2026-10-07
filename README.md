@@ -56,7 +56,7 @@ others. The gear button (top right) opens a drawer with the server's current set
 Signed in with an admin account you can change them there, and store an
 OpenRouteService key; the plan on screen is then redone under the new
 settings. Beside it, the shield button opens the Django admin and the person
-button opens a drawer about the author, whose details live in
+button opens a drawer with a note from the author and links, kept in
 `planner/author.py`. A link such as `/map/?start=Chicago, IL&finish=Houston, TX` opens
 straight on that trip, which is what `map_url` in an API response is.
 
@@ -311,7 +311,7 @@ planner/
     trip.py                puts the pieces together, caching
   management/commands/     data import, credential management
   views.py, serializers.py API, map page, health check
-  author.py                who built this, for the page's About drawer
+  author.py                the note and links in the page's About drawer
   templates/, static/      the map page: markup, styles, and the script that calls the API
   handlers.py              one JSON shape for every API error
   throttling.py            per-client rate limit

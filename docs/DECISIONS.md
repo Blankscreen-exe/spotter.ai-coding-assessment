@@ -326,16 +326,15 @@ is visible at once.
 5. **A gear icon instead of the "Server settings" label, and an Admin button
    beside it** that opens the admin panel. Claude made that open in a new tab,
    so the trip on screen is not lost.
-6. **An icon on the Admin button too, and a third icon button for an "About the
-   author" drawer** with my links and a bio of at most 120 characters. The
-   details are in `planner/author.py`. Claude filled them in from my public
-   GitHub profile (name, the first sentence of my bio, and the accounts linked
-   there) for me to correct, and a test keeps the bio within the limit.
-7. **The About drawer opens with a note to the reviewer.** I wanted that space
-   to speak to whoever is reviewing this, starting "Hey there. Yes, you." and
-   saying that the page was built with them in mind. Claude drafted the wording
-   from that brief, keeping every claim to things the page really does, and I
-   edit it in `planner/author.py`.
+6. **An icon on the Admin button too, and a third icon button for an "About"
+   drawer.** Claude first filled it with my name, a short bio and links taken
+   from my public GitHub profile. I trimmed the links, then removed the title,
+   the initials, the name and the bio, so the drawer is only a note and links.
+7. **The drawer is a note to the reviewer.** I wanted that space to speak to
+   whoever is reviewing this, starting "Hey there. Yes, you." and saying the
+   page was built with them in mind. Claude drafted it, I rewrote it in my own
+   words, and then asked Claude to tone my version down. The text is in
+   `planner/author.py`, and every claim in it is something the page really does.
 
 ## 4. Things testing caught
 

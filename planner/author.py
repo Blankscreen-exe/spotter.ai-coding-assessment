@@ -1,30 +1,25 @@
-"""Who built this, as shown in the page's "About" drawer.
+"""What the page's "About" drawer says: a note to the reviewer, then links.
 
-Edit this file to change what the drawer says. Anything left empty is simply
-not shown. Each link's kind picks its icon: github, linkedin, website, blog,
-x or email.
+Edit this file to change the drawer. Anything left empty is simply not shown.
+Each link's kind picks its icon: github, linkedin, website, blog, x or email.
 """
 
-BIO_MAX_LENGTH = 120
-
 AUTHOR = {
-    'name': 'M. Hammad Hassan',
-    'role': '',
-    'location': '',
-    'bio': 'I bring ideas to life, MVPs to production and confusion to clarity.',
     # A note to whoever is reviewing this, shown at the top of the drawer.
     # Every claim in it should stay true of the page as it is.
     'note': {
-        'greeting': 'Hey there. Yes, you.',
+        'greeting': '👋 Hey there! Yes, you!',
+        # One string per paragraph. Wrap a word in `backticks` to highlight it.
         'paragraphs': [
-            'You probably have a pile of these to get through, so I built this one to be reviewed '
-            'without leaving the page.',
-            'The example trips are one click. Let go of a slider and the route re-plans. The API call '
-            'tab shows the exact request behind whatever is on screen, so Postman is optional.',
-            'I focused on small things like that: the error that tells you what to fix, the API key box '
-            'that sits under the provider it belongs to, the link to where you get one.',
-            'If something still gets in your way, that is exactly what I would want to hear. The '
-            'reasoning behind each choice is in the decision log below.',
+            'A few things worth knowing while you look around.',
+            'You probably have a pile of these to get through, so I built this one with your time in mind.',
+            'The example trips are one click. Let go of a slider and the route re-plans. The API call tab '
+            'shows the exact request behind whatever is on screen, so Postman is optional. There is a '
+            'collection in the repo if you prefer it.',
+            'I focused on small things like that: the points where you would otherwise switch tabs and '
+            'lose your place.',
+            'If something still gets in your way, I would LOVE to hear about it. The reasoning behind '
+            'each choice is in the `decision log` below.',
         ],
         'signoff': 'Hammad',
     },
@@ -48,14 +43,8 @@ LINK_KINDS = {'github', 'linkedin', 'website', 'blog', 'x', 'email'}
 
 
 def author_for_page():
-    """AUTHOR with the two things the template cannot work out itself: initials and short link text."""
+    """AUTHOR, with each link given the short text shown under its label (the address without the https)."""
     def short(url):
         return url.removeprefix('mailto:').removeprefix('https://').removeprefix('www.').rstrip('/')
 
-    initials = ''.join(word[0] for word in AUTHOR['name'].replace('.', ' ').split())[:2].upper()
-    return {
-        **AUTHOR,
-        'initials': initials,
-        'details': ' · '.join(part for part in (AUTHOR['role'], AUTHOR['location']) if part),
-        'links': [{**link, 'text': short(link['url'])} for link in AUTHOR['links'] if link['url']],
-    }
+    return {**AUTHOR, 'links': [{**link, 'text': short(link['url'])} for link in AUTHOR['links'] if link['url']]}
