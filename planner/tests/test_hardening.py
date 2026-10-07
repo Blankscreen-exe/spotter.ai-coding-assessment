@@ -66,7 +66,7 @@ class ErrorShapeTests(TestCase):
 
     def test_unexpected_failure_is_json_and_does_not_leak_details(self):
         with mock.patch.object(views, 'plan_trip', side_effect=RuntimeError('secret internals')):
-            with self.assertLogs('planner.handlers', level='ERROR'):
+            with self.assertLogs('planner.handlers', level='ERROR'), self.assertLogs('django.request', level='ERROR'):
                 response = self.client.post(self.url, TRIP, content_type='application/json')
         self.assertEqual(response.status_code, 500)
         self.assertEqual(response.json(), {'error': {'code': 'internal_error', 'message': 'Unexpected server error.'}})
@@ -138,20 +138,24 @@ class HealthTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {'status': 'ok', 'stations': 1})
 
-    def test_unavailable_before_the_data_is_loaded(self):
-        response = self.client.get(self.url)
+    def unavailable(self):
+        # Not being able to serve is written to the server's log as well as answered.
+        with self.assertLogs('django.request', level='ERROR') as logs:
+            response = self.client.get(self.url)
         self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.json()['reason'], 'no station data loaded')
+        self.assertIn('Service Unavailable: /healthz/', logs.output[0])
+        return response
+
+    def test_unavailable_before_the_data_is_loaded(self):
+        self.assertEqual(self.unavailable().json()['reason'], 'no station data loaded')
 
     def test_unavailable_when_the_database_is_down(self):
         with mock.patch.object(views, 'get_index', side_effect=DatabaseError):
-            response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.json()['reason'], 'database unreachable')
+            self.assertEqual(self.unavailable().json()['reason'], 'database unreachable')
 
     @override_settings(SECURE_SSL_REDIRECT=True, SECURE_REDIRECT_EXEMPT=[r'^healthz/$'])
     def test_not_redirected_to_https(self):
-        self.assertEqual(self.client.get(self.url).status_code, 503)
+        self.unavailable()
         self.assertEqual(self.client.get(reverse('route-map')).status_code, 301)
 
 

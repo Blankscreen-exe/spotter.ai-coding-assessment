@@ -1,8 +1,9 @@
 """The server's runtime settings and provider API keys: reading them and changing them.
 
-conf.py says which settings exist. This module is the only code that reads or
-writes the two tables behind them, so the planner, the API, the page and the
-set_provider_key command all go through one place.
+conf.py says which settings exist. The planner, the providers, the API, the
+page and the set_provider_key command all read and write the two tables behind
+them through this module. (The Django admin edits the same rows with its own
+forms, which apply the same checks.)
 """
 
 import logging
@@ -14,7 +15,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .. import conf
-from ..exceptions import EncryptionNotConfigured
+from ..exceptions import EncryptionNotConfigured, ProviderNotConfigured
 from ..models import ProviderCredential, Setting
 
 logger = logging.getLogger(__name__)
@@ -49,13 +50,37 @@ class ServerSettings:
 
 
 def load() -> dict[str, Any]:
-    """Every setting as a parsed value, read with a single query."""
+    """Every setting as a parsed value, read with a single query.
+
+    A stored value that is no longer allowed (written before a limit was
+    tightened, or straight into the table) is passed over for the default
+    rather than failing every request that reads the settings.
+    """
     stored = dict(Setting.objects.values_list('key', 'value'))
-    return {key: definition.parse(stored.get(key, definition.default)) for key, definition in conf.DEFINITIONS.items()}
+    values = {}
+    for key, definition in conf.DEFINITIONS.items():
+        try:
+            values[key] = definition.parse(stored.get(key, definition.default))
+        except ValueError as exc:
+            logger.warning('Setting %s is stored as %r, which %s. Using %s.', key, stored[key], exc, definition.default)
+            values[key] = definition.parse(definition.default)
+    return values
 
 
 def providers_with_a_key() -> set[str]:
     return set(ProviderCredential.objects.values_list('provider', flat=True))
+
+
+def provider_key(provider: str) -> str | None:
+    """The API key stored for a provider, or None if there is none."""
+    try:
+        return ProviderCredential.objects.filter(provider=provider).values_list('api_key', flat=True).first() or None
+    except ImproperlyConfigured as exc:
+        # The key is there but the server's encryption key is missing or is not the one it was stored with.
+        raise ProviderNotConfigured(
+            f'The API key stored for {provider} cannot be read with the encryption key this server has. '
+            'Store the API key again.'
+        ) from exc
 
 
 def describe() -> ServerSettings:

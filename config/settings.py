@@ -212,11 +212,18 @@ if DEBUG_TOOLBAR:
         DEBUG_TOOLBAR_CONFIG.update(TOOLBAR_STORE_CLASS='debug_toolbar.store.CacheStore', CACHE_BACKEND='toolbar')
 
 
+# Django sends its own errors to the console only while DEBUG is on, and
+# otherwise by email to ADMINS, which is empty. So a crash in the map page, the
+# admin or the health check would leave nothing behind on a server run with
+# DEBUG off. Every response of 500 and above is therefore logged here as well.
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'handlers': {'console': {'class': 'logging.StreamHandler'}},
-    'loggers': {'planner': {'handlers': ['console'], 'level': 'INFO'}},
+    'loggers': {
+        'planner': {'handlers': ['console'], 'level': 'INFO'},
+        'django.request': {'handlers': ['console'], 'level': 'ERROR', 'propagate': False},
+    },
 }
 
 

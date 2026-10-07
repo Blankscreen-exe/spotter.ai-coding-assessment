@@ -66,6 +66,15 @@ class SettingTests(TestCase):
         Setting.objects.all().delete()
         self.assertEqual(server_settings.load()[conf.RANGE_MILES], 500.0)
 
+    def test_a_stored_value_that_is_no_longer_allowed_gives_way_to_the_default(self):
+        # A corridor of 60 miles could be saved before the 25-mile ceiling existed.
+        Setting.objects.filter(key=conf.CORRIDOR_MILES).update(value='60')
+        Setting.objects.filter(key=conf.MPG).update(value='12')
+        with self.assertLogs('planner.services.server_settings', level='WARNING') as logs:
+            loaded = server_settings.load()
+        self.assertEqual((loaded[conf.CORRIDOR_MILES], loaded[conf.MPG]), (5.0, 12.0))
+        self.assertIn('stations.corridor_miles', logs.output[0])
+
     def test_invalid_values_are_rejected(self):
         for key, value in [(conf.ROUTING_PROVIDER, 'google'), (conf.MPG, '0'), (conf.STOP_COST, '-1')]:
             with self.assertRaises(ValidationError, msg=f'{key}={value}'):

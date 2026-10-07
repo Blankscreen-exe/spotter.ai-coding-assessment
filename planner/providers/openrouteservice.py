@@ -1,6 +1,6 @@
 from .. import conf
 from ..exceptions import ProviderNotConfigured, RouteNotFound, RoutingProviderError
-from ..models import ProviderCredential
+from ..services import server_settings
 from ..services.places import Location
 from .base import METERS_PER_MILE, Route, RoutingProvider
 from .polyline import decode_polyline
@@ -15,8 +15,8 @@ class OpenRouteServiceProvider(RoutingProvider):
     base_url_setting = 'ORS_BASE_URL'
 
     def route(self, start: Location, finish: Location) -> Route:
-        credential = ProviderCredential.objects.filter(provider=self.name).first()
-        if credential is None or not credential.api_key:
+        api_key = server_settings.provider_key(self.name)
+        if api_key is None:
             raise ProviderNotConfigured(
                 'OpenRouteService is selected but has no API key. Add one in the admin under '
                 'Provider credentials, or run "python manage.py set_provider_key openrouteservice".'
@@ -24,7 +24,7 @@ class OpenRouteServiceProvider(RoutingProvider):
         response = self._send(
             'POST',
             f'{self.base_url}/v2/directions/driving-car',
-            headers={'Authorization': credential.api_key},
+            headers={'Authorization': api_key},
             json={
                 'coordinates': [[start.lon, start.lat], [finish.lon, finish.lat]],
                 'instructions': False,

@@ -29,7 +29,7 @@ from django.conf import settings
 from django.core.cache import cache
 
 from .. import conf
-from ..exceptions import InvalidRequest
+from ..exceptions import InvalidRequest, RoutingProviderError
 from ..providers import Route, RoutingProvider, get_provider
 from . import server_settings
 from .optimizer import Candidate, plan_fuel_stops
@@ -44,8 +44,10 @@ CENT = Decimal('0.01')
 # thinned copy that still draws cleanly.
 MAX_GEOMETRY_POINTS = 3000
 # While one request is fetching a route, others wanting the same one look for
-# its answer this often.
+# its answer this often, and for no longer than a routing call may take plus
+# this margin for the work after it.
 WAIT_STEP_SECONDS = 0.1
+WAIT_MARGIN_SECONDS = 5
 
 FROM_PLAN_CACHE = 'plan cache'
 FROM_ROUTE_CACHE = 'route cache'
@@ -176,24 +178,27 @@ def _fetch_ready_route(
     """Get a route that is not cached yet. Returns it with the number of routing calls this request made.
 
     Several requests for the same new trip can arrive together. Only one of them
-    calls the provider: it holds a short-lived marker in the cache while it
-    works, and the others wait for its answer. The marker expires by itself, so a
+    at a time calls the provider: it holds a short-lived marker in the cache
+    while it works, and the others wait for its answer. If its call fails, one
+    of those waiting takes the marker and tries, and the rest go on waiting, so
+    a provider in trouble is never sent the whole burst at once. Nobody waits
+    longer than a routing call may take, and the marker expires by itself, so a
     request that dies mid-call cannot hold the rest up for long.
     """
-    marker, patience = key + ':fetching', settings.ROUTING_TIMEOUT_SECONDS + 5
-    fetching = _claim(marker, patience)
-    if not fetching:
-        ready = _wait_for(key, marker, patience)
+    marker, patience = key + ':fetching', settings.ROUTING_TIMEOUT_SECONDS + WAIT_MARGIN_SECONDS
+    give_up_at = time.monotonic() + patience
+    while not _claim(marker, patience):
+        ready = _wait_for(key, marker, give_up_at)
         if ready is not None:
             return ready, 0
-        fetching = _claim(marker, patience)  # whoever was fetching it failed, or took too long: do it here
+        if time.monotonic() >= give_up_at:
+            raise RoutingProviderError(f'{provider.label} did not respond in time.')
     try:
         ready = _make_ready(provider.route(start, finish), corridor_miles)
         _cache_set(key, ready)
         return ready, 1
     finally:
-        if fetching:
-            _release(marker)
+        _release(marker)
 
 
 def _claim(marker: str, seconds: float) -> bool:
@@ -212,10 +217,9 @@ def _release(marker: str) -> None:
         logger.warning('Cache write failed', exc_info=True)
 
 
-def _wait_for(key: str, marker: str, seconds: float) -> ReadyRoute | None:
-    """The route another request is fetching, once it is there. None if that request gave up or ran out of time."""
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
+def _wait_for(key: str, marker: str, give_up_at: float) -> ReadyRoute | None:
+    """The route another request is fetching, once it is there. None if that request failed, or time ran out."""
+    while time.monotonic() < give_up_at:
         time.sleep(WAIT_STEP_SECONDS)
         found = _cache_get_many([key, marker])
         if key in found:

@@ -198,13 +198,17 @@ class RouteApiTests(TripFixture):
         self.assertEqual(response.json()['error']['code'], 'no_feasible_fuel_plan')
 
     def test_provider_without_a_key(self):
-        response = self.plan(provider='openrouteservice')
+        # A fault on the server's side, so it is also written to the server's log.
+        with self.assertLogs('django.request', level='ERROR') as logs:
+            response = self.plan(provider='openrouteservice')
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()['error']['code'], 'routing_provider_not_configured')
+        self.assertIn('Service Unavailable: /api/v1/route/', logs.output[0])
 
     def test_default_provider_comes_from_the_settings_table(self):
         Setting.objects.filter(key=conf.ROUTING_PROVIDER).update(value=conf.PROVIDER_ORS)
-        self.assertEqual(self.plan().status_code, 503)
+        with self.assertLogs('django.request', level='ERROR'):
+            self.assertEqual(self.plan().status_code, 503)
         self.assertEqual(self.plan(provider='osrm').status_code, 200)
 
     def test_vehicle_settings_come_from_the_settings_table(self):
@@ -426,3 +430,24 @@ class SameTripAtOnceTests(TripFixture):
         _, calls = self.fetch()
         self.assertEqual(calls, 1)
         self.assertEqual(self.route_call.call_count, 1)
+
+    def test_only_the_one_that_takes_over_calls_the_provider(self):
+        ready, _ = self.fetch()  # a route to hand out below
+        cache.clear()
+        self.route_call.reset_mock()
+        cache.add(self.KEY + ':fetching', 1, 30)  # another request is fetching this route
+        # It fails, and a third request takes over before this one looks again. So this one's first
+        # wait ends with nothing and its second with the route. It must not call the provider itself:
+        # a provider that has just failed would otherwise be sent every waiting request at once.
+        with mock.patch.object(trip, '_wait_for', side_effect=[None, ready]) as waits:
+            self.assertEqual(self.fetch(), (ready, 0))
+        self.assertEqual(waits.call_count, 2)
+        self.route_call.assert_not_called()
+
+    @override_settings(ROUTING_TIMEOUT_SECONDS=0.3)
+    def test_nobody_waits_longer_than_a_routing_call_may_take(self):
+        cache.add(self.KEY + ':fetching', 1, 30)  # another request is fetching this route, and never finishes
+        with mock.patch.object(trip, 'WAIT_MARGIN_SECONDS', 0):
+            with self.assertRaisesMessage(RoutingProviderError, 'did not respond in time'):
+                self.fetch()
+        self.route_call.assert_not_called()

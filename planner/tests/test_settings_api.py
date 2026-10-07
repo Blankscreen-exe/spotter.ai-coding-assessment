@@ -176,7 +176,7 @@ class SettingsEditingTests(TestCase):
 
     def test_storing_a_key_without_an_encryption_key_fails_cleanly(self):
         self.client.force_login(self.admin)
-        with override_settings(CREDENTIALS_ENCRYPTION_KEYS=[]):
+        with override_settings(CREDENTIALS_ENCRYPTION_KEYS=[]), self.assertLogs('django.request', level='ERROR'):
             response = patch(self.client, {'settings': {conf.MPG: 12}, 'provider_keys': {conf.PROVIDER_ORS: 'a-key'}})
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()['error']['code'], 'encryption_not_configured')

@@ -93,6 +93,15 @@ class OpenRouteServiceTests(TestCase):
         self.assertEqual(route.coordinates.tolist(), LINE)
         self.assertAlmostEqual(route.distance_miles, 1000.0)
 
+    def test_a_stored_key_that_can_no_longer_be_read(self):
+        ProviderCredential.objects.create(provider=conf.PROVIDER_ORS, api_key='secret-key')
+        # The server now has a different encryption key from the one the API key was stored with.
+        with override_settings(CREDENTIALS_ENCRYPTION_KEYS=[Fernet.generate_key().decode()]):
+            with mock.patch.object(requests.Session, 'request') as send:
+                with self.assertRaisesMessage(ProviderNotConfigured, 'cannot be read'):
+                    self.provider.route(CHICAGO, HOUSTON)
+        send.assert_not_called()
+
     def test_rejected_key(self):
         ProviderCredential.objects.create(provider=conf.PROVIDER_ORS, api_key='bad')
         with mock.patch.object(requests.Session, 'request', return_value=response(403, {'error': 'Access denied'})):
