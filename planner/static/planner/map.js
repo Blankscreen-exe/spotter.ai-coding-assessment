@@ -161,7 +161,10 @@
     if (!svg) return;
     const box = svg.getBoundingClientRect();
     const W = box.width || 1000, H = box.height || 220;
-    const left = 44, right = 20, top = 30, bottom = 38;
+    // In a low panel the place names under the axis are left out (the trip bar already says them),
+    // which gives the fuel line itself more of the height.
+    const compact = H < 170;
+    const left = 44, right = 20, top = 28, bottom = compact ? 20 : 38;
     const tank = body.vehicle.max_range_miles / body.vehicle.miles_per_gallon;
     const D = Math.max(body.summary.distance_miles, 0.1);
     const x = (mile) => left + (mile / D) * (W - left - right);
@@ -174,8 +177,8 @@
       <text x="${left - 6}" y="${y(0) + 4}" text-anchor="end">empty</text>
       <polygon points="${x(0)},${y(0)} ${line} ${x(D)},${y(0)}" fill="#e8efff"/>
       <polyline points="${line}" fill="none" stroke="#1d4ed8" stroke-width="2.5" stroke-linejoin="round"/>
-      <text x="${x(0)}" y="${H - 6}" text-anchor="start">${esc(body.start.name)}</text>
-      <text x="${x(D)}" y="${H - 6}" text-anchor="end">${esc(body.finish.name)} &middot; mile ${Math.round(D).toLocaleString()}</text>`;
+      ${compact ? '' : `<text x="${x(0)}" y="${H - 6}" text-anchor="start">${esc(body.start.name)}</text>
+      <text x="${x(D)}" y="${H - 6}" text-anchor="end">${esc(body.finish.name)} &middot; mile ${Math.round(D).toLocaleString()}</text>`}`;
     for (const stop of body.fuel_stops) {
       const sx = x(stop.mile_marker), order = Number(stop.order);
       out += `<g class="stopmark" data-order="${order}">

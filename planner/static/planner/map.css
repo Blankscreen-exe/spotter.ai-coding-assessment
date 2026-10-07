@@ -4,7 +4,7 @@
   --blue: #1d4ed8; --blue-soft: #e8efff; --green: #15803d; --green-soft: #e6f4ea;
   --red: #b91c1c; --red-soft: #fdecea; --amber: #92400e; --amber-soft: #fef3c7;
   --side: min(400px, 100vw);              /* width of a side drawer */
-  --panel: max(180px, 25vh);              /* height of the bottom drawer's content when open: a quarter of the window */
+  --panel: clamp(130px, 16vh, 180px);     /* height of the bottom drawer's content when open: kept small, tables scroll */
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -89,10 +89,10 @@ input[type=range] { width: 100%; margin: 2px 0 0; accent-color: var(--blue); }
 #collapse:hover { color: var(--blue); }
 /* Closed, the panel has no height at all; the line above it is a shadow so that it adds none. */
 #panel { height: 0; overflow: hidden; padding: 0 16px; transition: height .22s ease, padding .22s ease; }
-body.dock-open #panel { height: var(--panel); overflow: auto; padding: 10px 16px 12px; box-shadow: inset 0 1px 0 var(--line); }
+body.dock-open #panel { height: var(--panel); overflow: auto; padding: 8px 16px 10px; box-shadow: inset 0 1px 0 var(--line); }
 #panel table { border-collapse: collapse; width: 100%; }
 #panel th, #panel td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); }
-#panel th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; position: sticky; top: -10px; background: #fff; }
+#panel th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; position: sticky; top: -8px; background: #fff; }
 #panel td.num, #panel th.num { text-align: right; font-variant-numeric: tabular-nums; }
 #panel tr.total td { font-weight: 700; border-bottom: 0; }
 #panel tr.current td { background: var(--blue-soft); font-weight: 600; }
@@ -108,7 +108,7 @@ dl.facts dd { margin: 0; font-weight: 600; }
 
 /* fuel timeline */
 /* Sized from the open height directly, so it is right from the first frame of the slide. */
-#chart { width: 100%; height: calc(var(--panel) - 30px); display: block; }
+#chart { width: 100%; height: calc(var(--panel) - 22px); display: block; }
 #chart text { font-size: 11px; fill: var(--muted); }
 #chart .stopmark text.n { fill: var(--blue); font-weight: 700; }
 #chart .price { fill: var(--ink); }

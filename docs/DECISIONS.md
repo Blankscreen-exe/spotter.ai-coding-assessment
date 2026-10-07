@@ -349,8 +349,10 @@ is visible at once.
    the panel opens to about 45% of the window; the About drawer still covers
    and dims; a link naming a tab opens on it; Escape closes only the side
    drawer; and on a phone the side drawer covers the full width.
-   After seeing it, I cut the open height from 45% to 25% of the window, so the
-   map keeps most of the screen.
+   After seeing it, I asked for the open drawer to be clearly smaller. It went
+   from 45% of the window to 25%, then to about 16%, so the map keeps roughly
+   70% of the screen. The tables scroll, which I accepted, and the chart drops
+   its place-name labels at that height to keep the fuel line readable.
 
 ## 4. Things testing caught
 
