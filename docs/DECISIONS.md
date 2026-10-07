@@ -290,6 +290,7 @@ Smaller calls, all Claude defaults that I kept:
 | Call | Why |
 | --- | --- |
 | The sliders override one request; the stored settings stay in the admin | Letting a public page write the settings table would let anyone change it |
+| "Server settings" opens a drawer on the page (my request), read-only, fed by `GET /api/v1/settings/` | The settings are visible without leaving the page; editing still needs the admin login. For an API key it says only whether one is stored |
 | The sliders start from the server's current settings | So the page and the API never disagree about the defaults |
 | Rate limit raised from 60 to 120 requests a minute | The "Stops against cost" tab makes six small requests per trip, all served from cache |
 | "Planning your route" is a plain spinner | The mockup ticked off three stages on a timer, which would have been pretend progress |
@@ -320,7 +321,7 @@ Smaller calls, all Claude defaults that I kept:
 
 ## 5. How it is verified
 
-- 122 automated tests covering 94% of the Python lines, run on both SQLite and PostgreSQL 17.
+- 126 automated tests covering 94% of the Python lines, run on both SQLite and PostgreSQL 17.
 - The rate limit was exercised against the running stack: with the limit then at
   60 a minute, 65 quick requests gave 60 successes and 5 refusals with a
   `Retry-After` header.

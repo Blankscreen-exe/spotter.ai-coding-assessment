@@ -50,10 +50,11 @@
     return { request, status: response.status, body };
   }
 
+  // Leaving a number out lets the server use its own setting.
   function buildRequest(start, finish, cost, fuel) {
     const request = { start, finish };
-    if (cost !== DEFAULTS.stopCost) request.stop_cost = cost;
-    if (fuel < DEFAULTS.rangeMiles) request.initial_range_miles = fuel;
+    if (cost !== undefined) request.stop_cost = cost;
+    if (fuel !== undefined) request.initial_range_miles = fuel;
     return request;
   }
 
@@ -242,7 +243,7 @@
         <dt>Vehicle</dt><dd>${Number(body.vehicle.max_range_miles)} mile range, ${Number(body.vehicle.miles_per_gallon)} miles per gallon</dd>
       </dl>
       <p class="note">The routing provider, range, miles per gallon and the default cost per stop are rows in a settings table.
-      Change them under Server settings (top right); the next request picks them up.</p>`,
+      Server settings (top right) shows them; a change there is picked up by the next request.</p>`,
   };
 
   function showPanel() {
@@ -280,7 +281,7 @@
   function sliderLabels() {
     $('costOut').textContent = '$' + $('cost').value;
     const miles = Number($('fuel').value);
-    $('fuelOut').textContent = Math.round(miles) + ' mi' + (miles >= DEFAULTS.rangeMiles ? ' (full)' : '');
+    $('fuelOut').textContent = Math.round(miles) + ' mi' + (miles >= Number($('fuel').max) ? ' (full)' : '');
   }
 
   function servedSentence(meta) {
@@ -311,6 +312,9 @@
     $('sumGallons').textContent = body.summary.gallons_purchased.toFixed(1);
     $('cost').max = Math.max(Number($('cost').max), Math.ceil(body.planning.stop_cost));
     $('cost').value = body.planning.stop_cost;
+    // The range is the server's to say; it may have been changed since the page loaded.
+    $('fuel').max = body.vehicle.max_range_miles;
+    $('fuel').step = $('fuel').min = body.vehicle.max_range_miles / 20;
     $('fuel').value = body.vehicle.initial_range_miles;
     sliderLabels();
     $('say').textContent = servedSentence(body.meta) + deltaSentence(previous, body.summary);
@@ -377,7 +381,7 @@
     if (!example) return;
     $('start').value = example.start;
     $('finish').value = example.finish;
-    firstPlan(buildRequest(example.start, example.finish, DEFAULTS.stopCost, example.fuel || DEFAULTS.rangeMiles));
+    firstPlan(buildRequest(example.start, example.finish, undefined, example.fuel));
   });
   $('askStart').addEventListener('submit', (event) => {
     event.preventDefault();
@@ -391,7 +395,7 @@
     event.preventDefault();
     const finish = $('finish').value.trim();
     if (!finish) { $('finishError').innerHTML = '<div class="error">Tell me where you are going.</div>'; return; }
-    firstPlan(buildRequest($('start').value.trim(), finish, DEFAULTS.stopCost, DEFAULTS.rangeMiles));
+    firstPlan(buildRequest($('start').value.trim(), finish));
   });
   $('back').addEventListener('click', () => show('askStart'));
   $('cancel').addEventListener('click', () => { $('onboarding').hidden = true; });
@@ -424,6 +428,65 @@
     sliderLabels();
     replan();
   });
+
+  // ---------- server settings drawer ----------
+
+  function settingValue(setting, providers) {
+    const show = (value) => {
+      if (setting.unit === 'USD') return '$' + value;
+      if (setting.unit) return `${value} ${setting.unit}`;
+      const provider = providers.find((candidate) => candidate.name === value);
+      return provider ? provider.label : value;
+    };
+    return { now: show(setting.value), usual: show(setting.default), changed: setting.value !== setting.default };
+  }
+
+  function keyStatus(provider) {
+    if (!provider.needs_key) return '<span class="tag">no key needed</span>';
+    return provider.has_key ? '<span class="tag good">API key stored</span>' : '<span class="tag warn">no API key stored</span>';
+  }
+
+  async function openSettings() {
+    $('settings').classList.add('open');
+    $('shade').classList.add('open');
+    $('closeSettings').focus();
+    $('settingsBody').innerHTML = '<p class="note">Reading the settings...</p>';
+    let body;
+    try {
+      const response = await fetch(config.settingsUrl);
+      body = await response.json();
+      if (!response.ok) throw new Error();
+    } catch (error) {
+      $('settingsBody').innerHTML = '<div class="error">Could not read the settings from the server.</div>';
+      return;
+    }
+    // The page was told the defaults when it loaded; someone may have changed them in the admin since.
+    for (const setting of body.settings) {
+      const name = { 'stops.cost_per_stop': 'stopCost', 'vehicle.range_miles': 'rangeMiles', 'vehicle.mpg': 'mpg', 'routing.provider': 'provider' }[setting.key];
+      if (name) DEFAULTS[name] = setting.value;
+    }
+    $('settingsBody').innerHTML = body.settings.map((setting) => {
+      const value = settingValue(setting, body.providers);
+      return `<div class="setting">
+        <div class="name"><span>${esc(setting.label)}</span><b>${esc(value.now)}</b></div>
+        <p>${esc(setting.description)}</p>
+        <p><code>${esc(setting.key)}</code>${value.changed ? ` &middot; <span class="changed">changed from the default, ${esc(value.usual)}</span>` : ''}</p>
+      </div>`;
+    }).join('') + `<div class="providers"><h3>Routing providers</h3>${body.providers.map((provider) => `<div class="provider">
+        <span>${esc(provider.label)}${provider.active ? ' <span class="tag good">in use</span>' : ''}</span>${keyStatus(provider)}</div>`).join('')}</div>`;
+  }
+
+  function closeSettings() {
+    $('settings').classList.remove('open');
+    $('shade').classList.remove('open');
+    $('showSettings').focus();
+  }
+
+  $('editSettings').href = config.adminUrl;
+  $('showSettings').addEventListener('click', openSettings);
+  $('closeSettings').addEventListener('click', closeSettings);
+  $('shade').addEventListener('click', closeSettings);
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && $('settings').classList.contains('open')) closeSettings(); });
 
   // One stop, highlighted on the map, the chart and the table together.
   let hot = null;
@@ -458,7 +521,7 @@
     $('finish').value = asked.get('finish');
     const number = (name, fallback) => (asked.get(name) !== null && asked.get(name) !== '' && !Number.isNaN(Number(asked.get(name))) ? Number(asked.get(name)) : fallback);
     $('onboarding').hidden = false;
-    firstPlan(buildRequest(asked.get('start'), asked.get('finish'), number('stop_cost', DEFAULTS.stopCost), number('initial_range_miles', DEFAULTS.rangeMiles)));
+    firstPlan(buildRequest(asked.get('start'), asked.get('finish'), number('stop_cost', undefined), number('initial_range_miles', undefined)));
   } else {
     openOnboarding();
   }

@@ -103,6 +103,13 @@
       }
     },
     {
+      "name": "Server settings (read-only)",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/api/v1/settings/"
+      }
+    },
+    {
       "name": "Error: ambiguous place",
       "request": {
         "method": "POST",

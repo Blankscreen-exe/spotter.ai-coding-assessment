@@ -52,7 +52,8 @@ and nothing more: every plan on screen came from `POST /api/v1/route/`.
    API call behind the plan, and server details.
 
 Pointing at a stop on the map, the chart or the table highlights it in the
-others. A link such as `/map/?start=Chicago, IL&finish=Houston, TX` opens
+others. "Server settings" opens a drawer with the server's current settings
+and a link to change them in the admin. A link such as `/map/?start=Chicago, IL&finish=Houston, TX` opens
 straight on that trip, which is what `map_url` in an API response is.
 
 ## The API
@@ -144,6 +145,11 @@ Errors all have the shape `{"error": {"code": "...", "message": "..."}}`:
 
 `GET /healthz/` returns 200 once the database answers and the station data is
 loaded, and 503 otherwise. The Docker stack uses it as the container health check.
+
+`GET /api/v1/settings/` returns what the server uses when a request does not
+say otherwise: each setting's value, default and description, and for each
+routing provider whether it is in use and whether an API key is stored (never
+the key itself). It is read-only; changing a setting is done in the admin.
 
 A Postman collection with these requests is in
 [docs/postman_collection.json](docs/postman_collection.json).
@@ -239,7 +245,7 @@ python manage.py test                                  # SQLite
 docker compose exec web python manage.py test          # PostgreSQL
 ```
 
-122 tests, 94% line coverage of the Python code. The optimizer is checked against
+126 tests, 94% line coverage of the Python code. The optimizer is checked against
 brute force and an independent formula on random routes. The routing providers
 and Nominatim are mocked, so the suite makes no network calls, and it always
 uses a private cache.

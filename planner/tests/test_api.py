@@ -4,13 +4,14 @@ from pathlib import Path
 from unittest import mock
 
 import numpy as np
+from cryptography.fernet import Fernet
 from django.contrib.staticfiles import finders
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from planner import conf
-from planner.models import FuelStation, Place, Setting
+from planner.models import FuelStation, Place, ProviderCredential, Setting
 from planner.providers import PROVIDERS, Route
 from planner.services.places import normalize
 from planner.services.stations import reset_index
@@ -176,6 +177,50 @@ class RouteApiTests(TripFixture):
         self.assertAlmostEqual(body['summary']['gallons_purchased'], (ROAD_MILES - 500) / 20, places=1)
 
 
+class SettingsApiTests(TestCase):
+    url = reverse('settings')
+
+    def settings(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        return response.json()
+
+    def test_lists_every_setting_with_its_current_value(self):
+        Setting.objects.filter(key=conf.STOP_COST).update(value='8')
+        by_key = {setting['key']: setting for setting in self.settings()['settings']}
+        self.assertEqual(set(by_key), set(conf.DEFINITIONS))
+        self.assertEqual(
+            by_key[conf.STOP_COST],
+            {'key': 'stops.cost_per_stop', 'label': 'Cost per stop', 'value': 8.0, 'default': 5.0, 'unit': 'USD',
+             'description': conf.DEFINITIONS[conf.STOP_COST].help_text},
+        )
+        self.assertEqual(by_key[conf.RANGE_MILES]['value'], 500.0)
+        self.assertEqual(by_key[conf.ROUTING_PROVIDER]['value'], 'osrm')
+
+    def test_says_which_provider_is_in_use(self):
+        providers = {provider['name']: provider for provider in self.settings()['providers']}
+        self.assertEqual(
+            providers['osrm'],
+            {'name': 'osrm', 'label': 'OSRM public server (no key)', 'active': True, 'needs_key': False, 'has_key': False},
+        )
+        self.assertEqual((providers['openrouteservice']['active'], providers['openrouteservice']['needs_key']), (False, True))
+
+    def test_reports_that_a_key_is_stored_but_never_the_key(self):
+        with override_settings(CREDENTIALS_ENCRYPTION_KEYS=[Fernet.generate_key().decode()]):
+            ProviderCredential.objects.create(provider=conf.PROVIDER_ORS, api_key='super-secret-key')
+            response = self.client.get(self.url)
+        providers = {provider['name']: provider for provider in response.json()['providers']}
+        self.assertTrue(providers['openrouteservice']['has_key'])
+        self.assertNotIn('super-secret-key', response.content.decode())
+        self.assertNotIn('api_key', response.content.decode())
+
+    def test_is_read_only(self):
+        for method in (self.client.post, self.client.put, self.client.patch, self.client.delete):
+            response = method(self.url, {'key': conf.STOP_COST, 'value': '0'}, content_type='application/json')
+            self.assertEqual(response.status_code, 405)
+        self.assertEqual(Setting.objects.get(key=conf.STOP_COST).value, '5')
+
+
 class RouteMapTests(TestCase):
     """The page plans nothing on the server; its script calls the API. These cover what the server hands it."""
 
@@ -199,6 +244,8 @@ class RouteMapTests(TestCase):
         config = self.config()
         self.assertEqual(config['apiUrl'], reverse('route-plan'))
         self.assertEqual(config['healthUrl'], reverse('health'))
+        self.assertEqual(config['settingsUrl'], reverse('settings'))
+        self.assertEqual(config['adminUrl'], reverse('admin:planner_setting_changelist'))
 
     def test_sliders_start_from_the_server_settings(self):
         self.assertEqual(
@@ -218,9 +265,10 @@ class RouteMapTests(TestCase):
         plan.assert_not_called()
         self.assertNotContains(response, 'alert(1)')
 
-    def test_links_to_the_settings_admin_and_loads_its_assets(self):
+    def test_has_the_settings_drawer_and_loads_its_assets(self):
         response = self.client.get(self.url)
-        self.assertContains(response, reverse('admin:planner_setting_changelist'))
+        self.assertContains(response, 'id="showSettings"')
+        self.assertContains(response, 'id="settings"')
         self.assertContains(response, 'planner/map.js')
         self.assertContains(response, 'planner/map.css')
 
@@ -236,5 +284,6 @@ class RouteMapTests(TestCase):
         # an injection hole, so each must be wrapped in esc(). Popups use textContent instead.
         html_builders = self.script().split('function popup(')[0] + self.script().split('// ---------- fuel timeline')[1]
         for text in ('stop.name', 's.name', 's.city', 's.state', 'stop.city', 'body.start.name', 'body.finish.name',
-                     'error.message', 'error.code', 'example.label', 'meta.served_from', 'meta.routing_provider'):
+                     'error.message', 'error.code', 'example.label', 'meta.served_from', 'meta.routing_provider',
+                     'setting.label', 'setting.description', 'setting.key', 'provider.label', 'value.now', 'value.usual'):
             self.assertNotRegex(html_builders, r'\$\{' + re.escape(text) + r'[^)]', text)

@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import conf
+from .models import ProviderCredential
 from .serializers import RouteRequestSerializer
 from .services.stations import get_index
 from .services.trip import plan_trip
@@ -48,14 +49,50 @@ class RoutePlanView(APIView):
         return Response(plan)
 
 
+class SettingsView(APIView):
+    """What the server uses when a request does not say otherwise. Read-only.
+
+    Changing a setting is done in the admin, behind a login. Nothing secret is
+    returned: for a provider's API key, only whether one is stored.
+    """
+
+    def get(self, request):
+        current = conf.load_settings()
+        with_a_key = set(ProviderCredential.objects.values_list('provider', flat=True))
+        return Response({
+            'settings': [
+                {
+                    'key': key,
+                    'label': conf.DEFINITIONS[key].label,
+                    'value': current[key],
+                    'default': conf.DEFINITIONS[key].parse(conf.DEFINITIONS[key].default),
+                    'unit': conf.DEFINITIONS[key].unit,
+                    'description': conf.DEFINITIONS[key].help_text,
+                }
+                for key in conf.DISPLAY_ORDER
+            ],
+            'providers': [
+                {
+                    'name': name,
+                    'label': label,
+                    'active': name == current[conf.ROUTING_PROVIDER],
+                    'needs_key': name in conf.PROVIDERS_NEEDING_A_KEY,
+                    'has_key': name in with_a_key,
+                }
+                for name, label in conf.PROVIDER_CHOICES
+            ],
+        })
+
+
 def route_map(request):
     """The page people use. It plans nothing itself: its script calls the API above."""
     settings_now = conf.load_settings()
     return render(request, 'planner/map.html', {
-        'admin_url': reverse('admin:planner_setting_changelist'),
         'config': {
             'apiUrl': reverse('route-plan'),
             'healthUrl': reverse('health'),
+            'settingsUrl': reverse('settings'),
+            'adminUrl': reverse('admin:planner_setting_changelist'),
             # The sliders start from what the server would use anyway.
             'defaults': {
                 'stopCost': settings_now[conf.STOP_COST],
