@@ -288,4 +288,4 @@ class RouteMapTests(TestCase):
         for text in ('stop.name', 's.name', 's.city', 's.state', 'stop.city', 'body.start.name', 'body.finish.name',
                      'error.message', 'error.code', 'example.label', 'meta.served_from', 'meta.routing_provider',
                      'setting.label', 'setting.description', 'setting.key', 'provider.label', 'value.now', 'value.usual'):
-            self.assertNotRegex(html_builders, r'\$\{' + re.escape(text) + r'[^)]', text)
+            self.assertNotRegex(html_builders, r'\$\{\s*' + re.escape(text) + r'\s*\}', text)

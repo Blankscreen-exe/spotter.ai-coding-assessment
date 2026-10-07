@@ -316,6 +316,12 @@ Then two requests of mine about the settings:
 After a save the plan on screen is redone under the new settings, so the effect
 is visible at once.
 
+3. **The API key box belongs with the provider it unlocks.** It had been in a
+   separate list at the bottom of the drawer. It now appears directly under the
+   routing provider choice when a provider that needs a key is selected, and
+   goes away otherwise. Claude dropped the separate list, since the key status
+   it showed now sits with the provider too.
+
 ## 4. Things testing caught
 
 - **GET ignored a default.** Django REST framework reads a query string like an

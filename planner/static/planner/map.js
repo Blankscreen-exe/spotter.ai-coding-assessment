@@ -462,11 +462,6 @@
     return provider ? provider.label : value;
   }
 
-  function keyStatus(provider) {
-    if (!provider.needs_key) return '<span class="tag">no key needed</span>';
-    return provider.has_key ? '<span class="tag good">API key stored</span>' : '<span class="tag warn">no API key stored</span>';
-  }
-
   function field(setting, editable) {
     if (!editable) return `<b>${esc(shown(setting, setting.value))}</b>`;
     if (!setting.unit) {
@@ -476,25 +471,48 @@
     return `<span class="amount">${setting.unit === 'USD' ? '$' : ''}<input type="number" step="any" min="0" data-setting="${esc(setting.key)}" value="${esc(setting.value)}">${setting.unit === 'USD' ? '' : ' ' + esc(setting.unit)}</span>`;
   }
 
+  // The API key belongs to the provider it unlocks, so it is asked for right under
+  // the provider choice, and only while a provider that needs one is selected.
+  function showKeyBox() {
+    const box = $('keyBox');
+    if (!box) return;
+    const choice = $('settingsForm').querySelector('[data-setting="routing.provider"]');
+    const name = choice ? choice.value : server.settings.find((setting) => setting.key === 'routing.provider').value;
+    const provider = server.providers.find((candidate) => candidate.name === name);
+    if (!provider || !provider.needs_key) {
+      box.className = '';
+      box.innerHTML = choice ? '' : '<span class="tag">no API key needed</span>';
+      return;
+    }
+    const stored = provider.has_key ? '<span class="tag good">API key stored</span>' : '<span class="tag warn">no API key stored</span>';
+    if (!choice || !server.editor.can_set_keys) {
+      box.className = '';
+      box.innerHTML = stored + (choice ? ' <span class="note">This account may not store API keys.</span>' : '');
+      return;
+    }
+    box.className = 'keybox';
+    // "OpenRouteService (API key)" reads oddly after "API key for", so the bracket is dropped here.
+    box.innerHTML = `<label for="providerKey">API key for ${esc(provider.label.replace(/\s*\(.*\)$/, ''))} ${stored}</label>
+      <input type="password" id="providerKey" autocomplete="off" data-key-for="${esc(provider.name)}"
+        placeholder="${provider.has_key ? 'Paste a new key to replace the stored one' : 'Paste the API key'}">
+      <p class="note">${provider.has_key ? 'Leave this empty to keep the stored key.' : 'Needed before the server can switch to this provider.'}
+        It is stored encrypted and never shown again.</p>
+      <div class="problem" data-problem="provider_keys.${esc(provider.name)}"></div>`;
+  }
+
   function renderSettings(note) {
     const editor = server.editor;
     const rows = server.settings.map((setting) => {
       const changed = setting.value !== setting.default;
       return `<div class="setting">
         <label class="name"><span>${esc(setting.label)}</span>${field(setting, editor.can_edit)}</label>
+        ${setting.key === 'routing.provider' ? '<div id="keyBox"></div>' : ''}
         <p>${esc(setting.description)}</p>
         <p><code>${esc(setting.key)}</code>${changed ? ` &middot; <span class="changed">changed from the default, ${esc(shown(setting, setting.default))}</span>` : ''}
           ${changed && editor.can_edit ? `<button type="button" class="link small" data-restore="${esc(setting.key)}" data-default="${esc(setting.default)}">use the default</button>` : ''}</p>
         <div class="problem" data-problem="${esc(setting.key)}"></div>
       </div>`;
     }).join('');
-    const providers = `<div class="providers"><h3>Routing providers</h3>${server.providers.map((provider) => `<div>
-        <div class="provider"><span>${esc(provider.label)}${provider.active ? ' <span class="tag good">in use</span>' : ''}</span>${keyStatus(provider)}</div>
-        ${provider.needs_key && editor.can_set_keys ? `<input type="password" autocomplete="off" data-key-for="${esc(provider.name)}"
-            placeholder="${provider.has_key ? 'Replace the API key' : 'Paste an API key'}" aria-label="API key for ${esc(provider.label)}">
-          <div class="problem" data-problem="provider_keys.${esc(provider.name)}"></div>` : ''}
-      </div>`).join('')}</div>`;
-
     let foot;
     if (editor.can_edit) {
       foot = `<div class="actions"><button type="submit" class="primary" id="saveSettings" disabled>Save changes</button><span class="note" id="saveNote">${esc(note || '')}</span></div>
@@ -513,7 +531,8 @@
         <div class="problem" id="loginProblem"></div>
         <button type="submit" class="primary" id="signIn">Sign in</button></div>`;
     }
-    $('settingsForm').innerHTML = rows + providers + `<div class="foot">${foot}</div>`;
+    $('settingsForm').innerHTML = rows + `<div class="foot">${foot}</div>`;
+    showKeyBox();
   }
 
   async function loadSettings(note) {
@@ -566,6 +585,12 @@
   async function saveSettings() {
     const changes = pendingChanges();
     if (!Object.keys(changes).length) return;
+    const wanted = server.providers.find((provider) => provider.name === (changes.settings || {})['routing.provider']);
+    if (wanted && wanted.needs_key && !wanted.has_key && !(changes.provider_keys || {})[wanted.name] && $('providerKey')) {
+      $('settingsForm').querySelector(`[data-problem="provider_keys.${CSS.escape(wanted.name)}"]`).textContent = 'Paste the API key to switch to this provider.';
+      $('providerKey').focus();
+      return;
+    }
     $('saveSettings').disabled = true;
     $('saveNote').textContent = 'Saving...';
     const answer = await send('PATCH', config.settingsUrl, changes);
@@ -613,7 +638,8 @@
     event.preventDefault();
     if ($('signIn')) signIn(); else saveSettings();
   });
-  $('settingsForm').addEventListener('input', () => {
+  $('settingsForm').addEventListener('input', (event) => {
+    if (event.target.dataset.setting === 'routing.provider') showKeyBox();
     if ($('saveSettings')) { $('saveSettings').disabled = !Object.keys(pendingChanges()).length; $('saveNote').textContent = ''; }
   });
   $('settingsForm').addEventListener('click', async (event) => {
