@@ -52,9 +52,10 @@
     return { request, status: response.status, body };
   }
 
-  // Leaving a number out lets the server use its own setting.
+  // Leaving a number out lets the server use its own setting. The page also asks for the stations the
+  // planner chose from, to draw them; a plain API call is not sent them unless it asks.
   function buildRequest(start, finish, cost, fuel) {
-    const request = { start, finish };
+    const request = { start, finish, include_candidates: true };
     if (cost !== undefined) request.stop_cost = cost;
     if (fuel !== undefined) request.initial_range_miles = fuel;
     return request;
@@ -86,6 +87,14 @@
     referrerPolicy: 'strict-origin-when-cross-origin',
   }).addTo(map);
   const tripLayer = L.layerGroup().addTo(map);
+  const otherStops = L.layerGroup().addTo(map);  // where the neighbouring plans would stop
+  // The stations the planner passed over are drawn as dots on a canvas, which copes with hundreds of them.
+  // A dot is small, so the pointer counts as on it from a few pixels away.
+  const dots = L.canvas({ padding: 0.5, tolerance: 4 });
+  let passedOver = [];
+  // Seen from far out the dots all sit on the route line, so they shrink to a hint; closer in they grow.
+  const dotSize = () => (map.getZoom() <= 5 ? 2 : map.getZoom() <= 6 ? 2.5 : map.getZoom() <= 7 ? 3.5 : 4.5);
+  map.on('zoomend', () => passedOver.forEach((dot) => dot.setRadius(dotSize())));
   syncZoomButtons();  // now that the tile layer has told the map how far it can zoom
 
   function pin(lat, lon, html, size) {
@@ -123,9 +132,28 @@
       .bindPopup(popup('Start', [body.start.name])).addTo(tripLayer);
     flag(body.finish.lat, body.finish.lon)
       .bindPopup(popup('Finish', [body.finish.name])).addTo(tripLayer);
+    // The stations the planner chose from and passed over, as grey dots, so the choice can be seen. Stations
+    // are placed at their town's centre, so a town's stations share a spot: one dot for the town, listing them.
+    const chosen = new Set(body.fuel_stops.map((stop) => stop.station_id));
+    const towns = new Map();
+    for (const station of body.candidate_stations || []) {
+      if (chosen.has(station.station_id)) continue;
+      const spot = `${station.lat},${station.lon}`;
+      if (!towns.has(spot)) towns.set(spot, []);
+      towns.get(spot).push(station);
+    }
+    passedOver = [...towns.values()].map((stations) => {
+      const [first] = stations.sort((a, b) => a.price_per_gallon - b.price_per_gallon);
+      return L.circleMarker([first.lat, first.lon], { renderer: dots, radius: dotSize(), weight: 1, color: '#fff', fillColor: '#64748b', fillOpacity: 0.95 })
+        .bindTooltip(() => popup(`${first.city}, ${first.state}`, [
+          `Mile ${Math.round(first.mile_marker)}. Considered, not chosen:`,
+          ...stations.slice(0, 5).map((station) => `${station.name}, $${station.price_per_gallon.toFixed(3)} a gallon`),
+          ...(stations.length > 5 ? [`and ${stations.length - 5} more`] : []),
+        ])).addTo(tripLayer);
+    });
     for (const stop of body.fuel_stops) {
       const order = Number(stop.order);
-      pin(stop.lat, stop.lon, `<div class="pin" data-order="${order}" style="width:28px;height:28px">${order}</div>`, 28)
+      pin(stop.lat, stop.lon, `<div class="pin" data-order="${order}" data-station="${Number(stop.station_id)}" style="width:28px;height:28px">${order}</div>`, 28)
         .bindPopup(popup(`${order}. ${stop.name}`, [
           `${stop.city}, ${stop.state}, mile ${Math.round(stop.mile_marker)}`,
           `${stop.gallons_purchased.toFixed(1)} gal at $${stop.price_per_gallon.toFixed(3)} = ${money(stop.cost)}`,
@@ -152,6 +180,40 @@
   }
   map.on('resize', fitRoute);
   map.on('movestart', () => { if (!fitting) following = false; });  // a drag, zoom or scroll by the user
+
+  // While "Stops against cost" is open, the map also shows where the other plans in the table would stop:
+  // a faint ring for each stop that is not one of this plan's.
+  function drawOtherStops() {
+    otherStops.clearLayers();
+    const known = current && dockOpen && tab === 'tradeoff' && comparisons.get(comparisonKey(current));
+    if (!known) return;
+    const mine = new Set(current.body.fuel_stops.map((stop) => stop.station_id));
+    const others = new Map();  // station id -> the stop, and the settings whose plans use it
+    for (const cost of comparedCosts(current.body.planning.stop_cost)) {
+      for (const stop of known.plans.has(cost) ? known.plans.get(cost).stops : []) {
+        if (mine.has(stop.station_id)) continue;
+        if (!others.has(stop.station_id)) others.set(stop.station_id, { stop, costs: [] });
+        others.get(stop.station_id).costs.push('$' + Number(cost));
+      }
+    }
+    for (const { stop, costs } of others.values()) {
+      pin(stop.lat, stop.lon, `<div class="ghost" data-station="${Number(stop.station_id)}"></div>`, 16)
+        .bindTooltip(popup(stop.name, [
+          `${stop.city}, ${stop.state}, mile ${Math.round(stop.mile_marker)}`,
+          `$${stop.price_per_gallon.toFixed(3)} a gallon. A stop when one costs ${costs.join(' or ')}.`,
+        ])).addTo(otherStops);
+    }
+  }
+
+  // Pointing at a row of that table picks out the row's plan on the map: its stops stay as they are and
+  // every other stop fades. null puts the map back.
+  function pickOutPlan(cost) {
+    const known = current && comparisons.get(comparisonKey(current));
+    const plan = known && cost !== null && known.plans.get(cost);
+    document.body.classList.toggle('comparing', Boolean(plan));
+    const stops = new Set(plan ? plan.stops.map((stop) => String(stop.station_id)) : []);
+    document.querySelectorAll('[data-station]').forEach((node) => node.classList.toggle('in-plan', stops.has(node.dataset.station)));
+  }
 
   // ---------- fuel timeline ----------
 
@@ -230,14 +292,15 @@
       if (!comparisons.has(key)) comparisons.set(key, { plans: new Map() });
       const known = comparisons.get(key);
       if (known.failed) return errorHtml(known.failed);
-      known.plans.set(selected, body.summary);  // the plan on screen is one of the five
+      known.plans.set(selected, { summary: body.summary, stops: body.fuel_stops });  // the plan on screen is one of the five
       const costs = comparedCosts(selected);
       if (costs.some((cost) => !known.plans.has(cost))) loadComparison(current, costs);
-      const cheapest = Math.min(...costs.filter((cost) => known.plans.has(cost)).map((cost) => known.plans.get(cost).total_fuel_cost));
-      return '<p class="note">This trip at your cost per stop and at the two settings either side of it. Click a row to use it.</p>' +
+      const cheapest = Math.min(...costs.filter((cost) => known.plans.has(cost)).map((cost) => known.plans.get(cost).summary.total_fuel_cost));
+      return '<p class="note">This trip at your cost per stop and at the two settings either side of it. Click a row to use it. ' +
+        'The rings on the map are stops the other plans would make; point at a row to pick out its plan.</p>' +
         '<table><tr><th>Cost per stop</th><th class="num">Stops</th><th class="num">Fuel bill</th><th class="num">Over the cheapest</th></tr>' +
         costs.map((cost) => {
-          const summary = known.plans.get(cost);
+          const summary = known.plans.has(cost) && known.plans.get(cost).summary;
           const tag = (cost === selected ? ' (selected)' : '') + (cost === DEFAULTS.stopCost ? ' (server default)' : '');
           const start = `<tr class="pick ${cost === selected ? 'current' : ''}" data-cost="${Number(cost)}"><td>$${Number(cost)}${tag}</td>`;
           // A row still on its way keeps its place, so the table does not jump as the counter moves.
@@ -271,7 +334,7 @@
         <dt>Health</dt><dd>${health ? esc(health.status) : 'unknown'} (GET ${esc(config.healthUrl)})</dd>
         <dt>Stations loaded</dt><dd>${health && health.stations ? Number(health.stations).toLocaleString() : 'unknown'}</dd>
         <dt>This plan</dt><dd>served from ${esc(body.meta.served_from)}, ${plural(Number(body.meta.routing_api_calls), 'routing call')}, ${Number(body.meta.elapsed_ms)} ms on the server</dd>
-        <dt>Stations on this route</dt><dd>${Number(body.meta.stations_considered)}</dd>
+        <dt>Stations on this route (the grey dots)</dt><dd>${Number(body.meta.stations_considered)}</dd>
         <dt>Routing provider</dt><dd>${esc(body.meta.routing_provider)}</dd>
         <dt>Vehicle</dt><dd>${Number(body.vehicle.max_range_miles)} mile range, ${Number(body.vehicle.miles_per_gallon)} miles per gallon</dd>
       </dl>
@@ -287,12 +350,17 @@
       button.setAttribute('aria-expanded', shown);
     });
     $('collapse').hidden = !dockOpen;
-    if (!dockOpen) return;  // what the panel last held stays there while it slides shut
+    pickOutPlan(null);
+    if (!dockOpen) {  // what the panel last held stays there while it slides shut
+      drawOtherStops();
+      return;
+    }
     const content = PANELS[tab](current.body);
     if (typeof content === 'string') $('panel').innerHTML = content;
     else $('panel').replaceChildren(content);
     if (tab === 'timeline') drawChart(current.body);
     if (tab === 'tradeoff') showSelectedRow();
+    drawOtherStops();
   }
 
   // The drawer is short, so the comparison scrolls inside it. The selected row is kept in the middle of
@@ -344,7 +412,7 @@
         setTimeout(() => { delete known.failed; }, 5000);  // allow a retry, for instance once a rate limit has passed
         break;
       }
-      known.plans.set(cost, answer.body.summary);
+      known.plans.set(cost, { summary: answer.body.summary, stops: answer.body.fuel_stops });
     }
     known.loading = false;
     if (tab === 'tradeoff' && current && comparisonKey(current) === key) showPanel();
@@ -388,6 +456,7 @@
     showPanel();
     const query = new URLSearchParams(call.request);
     query.delete('include_geometry');
+    query.delete('include_candidates');
     history.replaceState(null, '', `${location.pathname}?${query}${dockOpen ? '#' + tab : ''}`);
   }
 
@@ -547,6 +616,11 @@
     showPanel();
     rememberTab();
   });
+  $('panel').addEventListener('mouseover', (event) => {
+    const row = event.target.closest('tr.pick');
+    pickOutPlan(row ? Number(row.dataset.cost) : null);
+  });
+  $('panel').addEventListener('mouseleave', () => pickOutPlan(null));
   $('panel').addEventListener('click', (event) => {
     const row = event.target.closest('tr.pick');
     if (!row) return;

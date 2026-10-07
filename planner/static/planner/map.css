@@ -67,6 +67,12 @@ button { font: inherit; cursor: pointer; }
 .pin.start { background: var(--green); }
 .flag { display: block; overflow: visible; color: #111827; filter: drop-shadow(0 1px 2px rgba(15, 23, 42, .45)); }
 .flag .foot { fill: var(--red); }
+/* Where the neighbouring plans would stop, shown while "Stops against cost" is open: a faint ring each. */
+.ghost { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 2px solid #94a3b8; box-shadow: 0 1px 3px rgba(15, 23, 42, .3); }
+/* Pointing at a row of that table picks out its plan: its stops stand, every other stop fades. */
+[data-station] { transition: opacity .12s; }
+body.comparing [data-station]:not(.in-plan) { opacity: .25; }
+body.comparing .ghost.in-plan { border-color: var(--blue); background: var(--blue-soft); }
 
 /* ---- summary numbers and the two counters: a dark band, so the answer stands apart from the map above
    and the details below ---- */

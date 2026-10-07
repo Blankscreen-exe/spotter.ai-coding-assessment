@@ -409,6 +409,26 @@ is visible at once.
     its cap is the tank. What this does not alter is the planner: on the long
     trips we measured, plans stop changing somewhere between $6 and $20, so
     the upper part of the counter is realistic but uneventful.
+16. **Show what the plan was chosen from.** I asked whether the algorithm
+    computes several routes that could be drawn more faintly. It does not: it
+    asks for one route and chooses among the stations along it. Claude offered
+    three things that could be drawn instead, and I picked two.
+    - *The stations it passed over.* Grey dots along the route. This needed the
+      API to return them, so a request can now ask for `candidate_stations`;
+      it is off by default to keep the normal response small. Stations sit at
+      their town's centre, so the first version stacked several dots on one
+      spot and showed only the top one. It is now one dot per town, listing
+      that town's stations with their prices. The dots shrink when the map is
+      zoomed out, where they would otherwise smother the route line.
+    - *The stops of the neighbouring plans.* While "Stops against cost" is
+      open, a ring marks each stop one of the other four plans would make and
+      this one does not. Pointing at a row of the table fades every stop that
+      is not in that row's plan, so the two plans can be told apart at a
+      glance. That hover is Claude's addition: without it the rings did not
+      say which plan they belonged to.
+    The third option, real alternative routes from the routing provider, I
+    left out: it changes the provider, the optimiser, the cache and the
+    response, for one or two alternatives on a long trip.
 
 ### 3.16 Django Debug Toolbar for the reviewer
 

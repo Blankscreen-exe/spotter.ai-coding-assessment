@@ -65,7 +65,13 @@ and nothing more: every plan on screen came from `POST /api/v1/route/`.
    plan, or server details. Clicking it again lowers the panel and gives the map the room back.
 
 Pointing at a stop on the map, the chart or the table highlights it in the
-others. The gear button (top right) opens a drawer with the server's current
+others. The map also shows what the plan was chosen from. The grey dots along
+the route are the towns whose stations were considered and passed over; zoom in
+and point at one for the stations there and their prices. While the third tab
+is open, rings mark where the neighbouring plans would stop instead, and
+pointing at a row of its table picks out that row's plan on the map.
+
+The gear button (top right) opens a drawer with the server's current
 settings. It sits beside the page instead of covering it, so a saved change
 can be watched taking effect.
 Signed in with an admin account you can change them there, and store an
@@ -150,7 +156,7 @@ curl -X POST http://localhost:8000/api/v1/route/ \
 - `candidate_stations`, when asked for, lists every station within the corridor
   in route order, the chosen ones included, with the same fields as a fuel stop
   up to its price. `meta.stations_considered` is how many there are. It is left
-  out by default because it is large: about 70 KB for a cross-country trip.
+  out by default because it is large: 70 to 85 KB for a cross-country trip.
 - `meta.served_from` is `routing provider`, `route cache` or `plan cache`, and
   `meta.routing_api_calls` is 1 or 0 accordingly.
 
