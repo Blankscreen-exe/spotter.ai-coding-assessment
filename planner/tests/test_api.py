@@ -1,5 +1,8 @@
 import json
 import re
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from unittest import mock
 
 from cryptography.fernet import Fernet
@@ -9,8 +12,12 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from planner import conf
+from planner.exceptions import RoutingProviderError
 from planner.models import ProviderCredential, Setting
-from planner.services.stations import reset_index
+from planner.providers import PROVIDERS
+from planner.services import trip
+from planner.services.places import Location
+from planner.services.stations import get_index, reset_index
 
 from .fixtures import ROAD_MILES, create_trip_data, routing_mock
 
@@ -83,6 +90,30 @@ class RouteApiTests(TripFixture):
         body = self.plan().json()
         self.assertEqual(body['vehicle']['miles_per_gallon'], 20.0)
         self.assertEqual(body['meta']['served_from'], 'route cache')
+
+    def test_a_wider_corridor_needs_the_route_again(self):
+        # What is kept of a route is its line and the stations matched to it, not the route as
+        # fetched. Matching under a different corridor therefore takes one more routing call.
+        self.plan()
+        Setting.objects.filter(key=conf.CORRIDOR_MILES).update(value='10')
+        self.assertEqual(self.plan().json()['meta']['routing_api_calls'], 1)
+        self.assertEqual(self.plan().json()['meta']['routing_api_calls'], 0)
+        self.assertEqual(self.route_call.call_count, 2)
+
+    def test_what_is_cached_for_a_plan_is_small(self):
+        self.plan()
+        self.plan(stop_cost=3)
+        # The test cache keeps each entry pickled, so its size can be read off. Two plans of one trip
+        # are two small entries for the stops and one larger one for the route they share.
+        sizes = {
+            key.split(':')[-2]: len(pickled)
+            for key, pickled in cache._cache.items()
+            if 'stops1' in key or 'ready1' in key
+        }
+        self.assertEqual(sorted(sizes), ['ready1', 'stops1'])
+        self.assertLess(sizes['stops1'], 2000)
+        self.assertGreater(sizes['ready1'], sizes['stops1'])
+        self.assertEqual(sum('stops1' in key for key in cache._cache), 2)
 
     def test_cached_plan_echoes_each_request_as_typed(self):
         self.plan()
@@ -348,3 +379,50 @@ class RouteMapTests(TestCase):
 
     # What the page does with all this (opening the drawer, re-planning, escaping text from data)
     # is tested in a real browser: see test_page.py.
+
+
+class SameTripAtOnceTests(TripFixture):
+    """Several requests for the same new trip at the same moment: only one of them calls the routing provider."""
+
+    KEY = 'ready1:a-trip'
+
+    def setUp(self):
+        super().setUp()
+        get_index()  # loaded here, so the threads below never touch the database
+        self.start = Location('Alpha, KS', 'Alpha, KS', 40.0, -100.0)
+        self.finish = Location('Omega, OH', 'Omega, OH', 40.0, -80.0)
+
+    def fetch(self, _=None):
+        return trip._fetch_ready_route(self.KEY, PROVIDERS[conf.PROVIDER_OSRM], self.start, self.finish, 5.0)
+
+    def test_requests_arriving_together_share_one_routing_call(self):
+        answer = self.route_call.return_value
+
+        def slow_provider(*args):
+            time.sleep(0.3)
+            return answer
+
+        self.route_call.side_effect = slow_provider
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            results = list(pool.map(self.fetch, range(5)))
+        self.assertEqual(self.route_call.call_count, 1)
+        self.assertEqual(sorted(calls for _, calls in results), [0, 0, 0, 0, 1])
+        self.assertEqual({len(ready.candidates) for ready, _ in results}, {4})  # and all five got the route
+
+    def test_a_failed_call_does_not_hold_up_the_next_request(self):
+        self.route_call.side_effect = RoutingProviderError('The provider is down.')
+        with self.assertRaises(RoutingProviderError):
+            self.fetch()
+        self.route_call.side_effect = None
+        began = time.monotonic()
+        _, calls = self.fetch()
+        self.assertEqual(calls, 1)
+        self.assertLess(time.monotonic() - began, 0.5)  # nothing was left behind to wait for
+
+    def test_those_waiting_take_over_when_the_first_request_gives_up(self):
+        marker = self.KEY + ':fetching'
+        cache.add(marker, 1, 30)  # as if another request were fetching this route...
+        threading.Timer(0.25, cache.delete, [marker]).start()  # ...and then failed
+        _, calls = self.fetch()
+        self.assertEqual(calls, 1)
+        self.assertEqual(self.route_call.call_count, 1)
