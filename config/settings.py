@@ -132,13 +132,18 @@ if os.environ.get('DJANGO_SECURE', '').lower() in ('1', 'true', 'yes'):
     CSRF_COOKIE_SECURE = True
 
 
-# Django REST framework: JSON only, no auth (the brief asks for an open API).
+# Django REST framework: JSON only. The route endpoint takes no credentials; the
+# two endpoints that do (settings and sign-in) name their own classes.
 REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': ['rest_framework.renderers.JSONRenderer'],
     'DEFAULT_PARSER_CLASSES': ['rest_framework.parsers.JSONParser'],
     'DEFAULT_AUTHENTICATION_CLASSES': [],
     'DEFAULT_PERMISSION_CLASSES': [],
     'EXCEPTION_HANDLER': 'planner.handlers.api_exception_handler',
+    # How many proxies in front of the server may be believed about a client's
+    # address. With none, the rate limits count the address the connection comes
+    # from and ignore X-Forwarded-For, which any client can set to anything.
+    'NUM_PROXIES': int(os.environ.get('DJANGO_NUM_PROXIES', 0)),
 }
 
 # Requests per client on the route endpoint, e.g. "120/min". Empty disables it.

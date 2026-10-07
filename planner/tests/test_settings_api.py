@@ -251,6 +251,19 @@ class SessionTests(TestCase):
         self.assertEqual(statuses, [400, 400, 400, 429, 429])
         self.assertEqual(self.sign_in().status_code, 429)  # even the right password has to wait
 
+    @override_settings(LOGIN_RATE_LIMIT='3/min')
+    def test_signing_in_first_does_not_lift_the_limit(self):
+        self.sign_in()
+        statuses = [self.sign_in(password='guess').status_code for _ in range(4)]
+        self.assertEqual(statuses, [400, 400, 429, 429])
+
+    @override_settings(LOGIN_RATE_LIMIT='3/min')
+    def test_a_forged_forwarding_header_does_not_lift_it_either(self):
+        statuses = [
+            self.sign_in(password='guess', HTTP_X_FORWARDED_FOR=f'10.9.9.{number}').status_code for number in range(5)
+        ]
+        self.assertEqual(statuses, [400, 400, 400, 429, 429])
+
     def test_the_route_endpoint_still_needs_no_token(self):
         browser = Client(enforce_csrf_checks=True)
         response = browser.post(reverse('route-plan'), {'start': 'x'}, content_type='application/json')

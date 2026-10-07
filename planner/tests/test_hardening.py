@@ -97,6 +97,21 @@ class RateLimitTests(TestCase):
         self.assertEqual(self.request(REMOTE_ADDR='10.0.0.1').status_code, 429)
         self.assertEqual(self.request(REMOTE_ADDR='10.0.0.2').status_code, 200)
 
+    def test_a_client_cannot_name_its_own_address(self):
+        # X-Forwarded-For is whatever the sender types. A new value each time must not be a new allowance.
+        statuses = [self.request(HTTP_X_FORWARDED_FOR=f'10.9.9.{number}').status_code for number in range(4)]
+        self.assertEqual(statuses, [200, 200, 429, 429])
+
+    def test_behind_a_proxy_the_address_it_reports_is_the_client(self):
+        behind_one_proxy = {**settings.REST_FRAMEWORK, 'NUM_PROXIES': 1}
+        with override_settings(REST_FRAMEWORK=behind_one_proxy):
+            for _ in range(2):
+                self.request(HTTP_X_FORWARDED_FOR='203.0.113.5')
+            self.assertEqual(self.request(HTTP_X_FORWARDED_FOR='203.0.113.5').status_code, 429)
+            self.assertEqual(self.request(HTTP_X_FORWARDED_FOR='203.0.113.6').status_code, 200)
+            # Only the proxy's own entry, the last one, is believed: what the client put before it is not.
+            self.assertEqual(self.request(HTTP_X_FORWARDED_FOR='1.2.3.4, 203.0.113.5').status_code, 429)
+
     @override_settings(API_RATE_LIMIT='')
     def test_empty_setting_disables_the_limit(self):
         self.assertEqual({self.request().status_code for _ in range(5)}, {200})
