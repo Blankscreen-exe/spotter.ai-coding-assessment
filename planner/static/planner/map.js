@@ -243,7 +243,7 @@
         <dt>Vehicle</dt><dd>${Number(body.vehicle.max_range_miles)} mile range, ${Number(body.vehicle.miles_per_gallon)} miles per gallon</dd>
       </dl>
       <p class="note">The routing provider, range, miles per gallon and the default cost per stop are rows in a settings table.
-      Server settings (top right) shows them; a change there is picked up by the next request.</p>`,
+      The gear button (top right) shows them; a change there is picked up by the next request.</p>`,
   };
 
   function showPanel() {

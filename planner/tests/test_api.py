@@ -278,8 +278,15 @@ class RouteMapTests(TestCase):
         response = self.client.get(self.url)
         self.assertContains(response, 'id="showSettings"')
         self.assertContains(response, 'id="settings"')
+        # The settings button is only an icon, so it must carry its name for screen readers and on hover.
+        self.assertContains(response, 'id="showSettings" aria-label="Server settings" title="Server settings"')
         self.assertContains(response, 'planner/map.js')
         self.assertContains(response, 'planner/map.css')
+
+    def test_admin_button_opens_the_admin_panel(self):
+        response = self.client.get(self.url)
+        self.assertContains(response, f'id="openAdmin" href="{reverse("admin:index")}" target="_blank" rel="noopener"')
+        self.assertEqual(reverse('admin:index'), '/admin/')
 
     def test_map_tiles_are_requested_with_a_referer(self):
         # OpenStreetMap serves "Access blocked" tiles to requests without a Referer,

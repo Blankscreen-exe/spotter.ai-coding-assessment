@@ -18,6 +18,8 @@ button { font: inherit; cursor: pointer; }
 .primary { padding: 10px 18px; border: 0; border-radius: 4px; background: var(--blue); color: #fff; font-weight: 600; font-size: 15px; }
 .primary:disabled { opacity: .65; cursor: progress; }
 .secondary { padding: 6px 10px; border: 1px solid #9aa5b1; border-radius: 4px; background: #fff; color: var(--ink); text-decoration: none; }
+.secondary.icon { display: inline-grid; place-items: center; padding: 6px; line-height: 0; }
+.secondary:hover { border-color: var(--blue); color: var(--blue); }
 .link { border: 0; background: none; color: var(--muted); padding: 6px 0; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); color: var(--ink); font-size: 13px; }

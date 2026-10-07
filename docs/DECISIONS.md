@@ -321,6 +321,11 @@ is visible at once.
    routing provider choice when a provider that needs a key is selected, and
    goes away otherwise. Claude dropped the separate list, since the key status
    it showed now sits with the provider too.
+4. **A link to where the key comes from**, right under the key field. It opens
+   the provider's sign-up page.
+5. **A gear icon instead of the "Server settings" label, and an Admin button
+   beside it** that opens the admin panel. Claude made that open in a new tab,
+   so the trip on screen is not lost.
 
 ## 4. Things testing caught
 
@@ -347,7 +352,7 @@ is visible at once.
 
 ## 5. How it is verified
 
-- 150 automated tests covering 95% of the Python lines, run on both SQLite and PostgreSQL 17.
+- 151 automated tests covering 95% of the Python lines, run on both SQLite and PostgreSQL 17.
 - The rate limit was exercised against the running stack: with the limit then at
   60 a minute, 65 quick requests gave 60 successes and 5 refusals with a
   `Retry-After` header.

@@ -52,10 +52,10 @@ and nothing more: every plan on screen came from `POST /api/v1/route/`.
    API call behind the plan, and server details.
 
 Pointing at a stop on the map, the chart or the table highlights it in the
-others. "Server settings" opens a drawer with the server's current settings.
+others. The gear button (top right) opens a drawer with the server's current settings.
 Signed in with an admin account you can change them there, and store an
 OpenRouteService key; the plan on screen is then redone under the new
-settings. A link such as `/map/?start=Chicago, IL&finish=Houston, TX` opens
+settings. The Admin button beside it opens the Django admin. A link such as `/map/?start=Chicago, IL&finish=Houston, TX` opens
 straight on that trip, which is what `map_url` in an API response is.
 
 ## The API
@@ -208,8 +208,8 @@ cross-country route is about 12 ms to match stations and 30 ms to optimise.
 ## Configuration
 
 Runtime settings are rows in the `Setting` table. Change them in the page's
-"Server settings" drawer or in the Django admin at `/admin/`; either way they
-take effect on the next request.
+settings drawer (the gear button) or in the Django admin at `/admin/`; either
+way they take effect on the next request.
 
 The Docker stack creates an admin login on first start: **admin** /
 **fuelroute-demo**. For a local run, create the same one with:
@@ -254,7 +254,7 @@ python manage.py set_provider_key openrouteservice --activate
 ```
 
 `--activate` also makes it the default provider. The key can be pasted into the
-"Server settings" drawer or entered in the admin instead; all three need the
+settings drawer or entered in the admin instead; all three need the
 encryption key to be set first. Note that the OpenRouteService integration is covered by tests
 with mocked responses but has not yet been run against the live API.
 
@@ -265,7 +265,7 @@ python manage.py test                                  # SQLite
 docker compose exec web python manage.py test          # PostgreSQL
 ```
 
-150 tests, 95% line coverage of the Python code. The optimizer is checked against
+151 tests, 95% line coverage of the Python code. The optimizer is checked against
 brute force and an independent formula on random routes. The routing providers
 and Nominatim are mocked, so the suite makes no network calls, and it always
 uses a private cache.
