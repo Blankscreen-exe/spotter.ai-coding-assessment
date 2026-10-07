@@ -68,13 +68,6 @@ class RateLimitTests(TestCase):
         self.assertEqual(self.request(REMOTE_ADDR='10.0.0.1').status_code, 429)
         self.assertEqual(self.request(REMOTE_ADDR='10.0.0.2').status_code, 200)
 
-    def test_map_page_shares_the_limit(self):
-        for _ in range(2):
-            self.request()
-        response = self.client.get(reverse('route-map'), TRIP)
-        self.assertEqual(response.status_code, 429)
-        self.assertContains(response, 'Too many requests', status_code=429)
-
     @override_settings(API_RATE_LIMIT='')
     def test_empty_setting_disables_the_limit(self):
         self.assertEqual({self.request().status_code for _ in range(5)}, {200})

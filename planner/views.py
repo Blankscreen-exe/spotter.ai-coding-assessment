@@ -4,35 +4,14 @@ from django.db import DatabaseError, connection
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
-from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .exceptions import PlannerError
+from . import conf
 from .serializers import RouteRequestSerializer
 from .services.stations import get_index
 from .services.trip import plan_trip
 from .throttling import RouteRateThrottle
-
-
-def _plan(params):
-    """Validate request parameters and plan the trip. Returns (data, plan)."""
-    # A query string arrives as a QueryDict, which DRF reads like an HTML form
-    # (a missing boolean means False). A plain dict makes GET behave like POST.
-    if hasattr(params, 'dict'):
-        params = params.dict()
-    serializer = RouteRequestSerializer(data=params)
-    serializer.is_valid(raise_exception=True)
-    data = serializer.validated_data
-    plan = plan_trip(
-        data['start'],
-        data['finish'],
-        provider_name=data.get('provider'),
-        initial_range_miles=data.get('initial_range_miles'),
-        stop_cost=data.get('stop_cost'),
-        include_geometry=data['include_geometry'],
-    )
-    return data, plan
 
 
 class RoutePlanView(APIView):
@@ -45,34 +24,47 @@ class RoutePlanView(APIView):
     throttle_classes = [RouteRateThrottle]
 
     def get(self, request):
-        return self._respond(request, request.query_params)
+        # A query string arrives as a QueryDict, which DRF reads like an HTML form
+        # (a missing boolean means False). A plain dict makes GET behave like POST.
+        return self._respond(request, request.query_params.dict())
 
     def post(self, request):
         return self._respond(request, request.data)
 
     def _respond(self, request, params):
-        data, plan = _plan(params)
+        serializer = RouteRequestSerializer(data=params)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        plan = plan_trip(
+            data['start'],
+            data['finish'],
+            provider_name=data.get('provider'),
+            initial_range_miles=data.get('initial_range_miles'),
+            stop_cost=data.get('stop_cost'),
+            include_geometry=data['include_geometry'],
+        )
         query = urlencode({key: value for key, value in data.items() if key != 'include_geometry'})
         plan['map_url'] = request.build_absolute_uri(f'{reverse("route-map")}?{query}')
         return Response(plan)
 
 
 def route_map(request):
-    """The same plan drawn on an interactive map, for people rather than clients."""
-    context = {'params': request.GET, 'plan': None, 'error': None}
-    if request.GET.get('start') and request.GET.get('finish'):
-        if not RouteRateThrottle().allow_request(request, None):
-            context['error'] = 'Too many requests. Please wait a minute and try again.'
-            return render(request, 'planner/map.html', context, status=429)
-        try:
-            _, context['plan'] = _plan({**request.GET.dict(), 'include_geometry': True})
-        except PlannerError as exc:
-            context['error'] = exc.message
-        except ValidationError as exc:
-            context['error'] = '; '.join(
-                f'{field}: {" ".join(map(str, errors))}' for field, errors in exc.detail.items()
-            )
-    return render(request, 'planner/map.html', context)
+    """The page people use. It plans nothing itself: its script calls the API above."""
+    settings_now = conf.load_settings()
+    return render(request, 'planner/map.html', {
+        'admin_url': reverse('admin:planner_setting_changelist'),
+        'config': {
+            'apiUrl': reverse('route-plan'),
+            'healthUrl': reverse('health'),
+            # The sliders start from what the server would use anyway.
+            'defaults': {
+                'stopCost': settings_now[conf.STOP_COST],
+                'rangeMiles': settings_now[conf.RANGE_MILES],
+                'mpg': settings_now[conf.MPG],
+                'provider': settings_now[conf.ROUTING_PROVIDER],
+            },
+        },
+    })
 
 
 def health(request):

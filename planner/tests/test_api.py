@@ -1,6 +1,10 @@
+import json
+import re
+from pathlib import Path
 from unittest import mock
 
 import numpy as np
+from django.contrib.staticfiles import finders
 from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
@@ -172,28 +176,60 @@ class RouteApiTests(TripFixture):
         self.assertAlmostEqual(body['summary']['gallons_purchased'], (ROAD_MILES - 500) / 20, places=1)
 
 
-class RouteMapTests(TripFixture):
+class RouteMapTests(TestCase):
+    """The page plans nothing on the server; its script calls the API. These cover what the server hands it."""
+
     url = reverse('route-map')
 
-    def test_plans_a_trip(self):
-        response = self.client.get(self.url, {'start': 'Alpha, KS', 'finish': 'Omega, OH'})
+    def config(self):
+        response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Truck Stop')
-        self.assertContains(response, 'LineString')
+        embedded = re.search(r'<script id="planner-config" type="application/json">(.*?)</script>', response.content.decode())
+        return json.loads(embedded.group(1))
+
+    def script(self):
+        return Path(finders.find('planner/map.js')).read_text(encoding='utf-8')
+
+    def test_page_is_told_where_the_api_is(self):
+        config = self.config()
+        self.assertEqual(config['apiUrl'], reverse('route-plan'))
+        self.assertEqual(config['healthUrl'], reverse('health'))
+
+    def test_sliders_start_from_the_server_settings(self):
+        self.assertEqual(
+            self.config()['defaults'], {'stopCost': 5.0, 'rangeMiles': 500.0, 'mpg': 10.0, 'provider': 'osrm'}
+        )
+        Setting.objects.filter(key=conf.STOP_COST).update(value='8')
+        Setting.objects.filter(key=conf.RANGE_MILES).update(value='400')
+        defaults = self.config()['defaults']
+        self.assertEqual((defaults['stopCost'], defaults['rangeMiles']), (8.0, 400.0))
+
+    def test_a_link_with_a_trip_is_not_planned_on_the_server(self):
+        # /map/?start=...&finish=... is what the API returns as map_url. The script reads the
+        # trip from the address, so the server neither plans it nor echoes it into the page.
+        with mock.patch('planner.views.plan_trip') as plan:
+            response = self.client.get(self.url, {'start': '<script>alert(1)</script>', 'finish': 'Omega, OH'})
+        self.assertEqual(response.status_code, 200)
+        plan.assert_not_called()
+        self.assertNotContains(response, 'alert(1)')
+
+    def test_links_to_the_settings_admin_and_loads_its_assets(self):
+        response = self.client.get(self.url)
+        self.assertContains(response, reverse('admin:planner_setting_changelist'))
+        self.assertContains(response, 'planner/map.js')
+        self.assertContains(response, 'planner/map.css')
 
     def test_map_tiles_are_requested_with_a_referer(self):
         # OpenStreetMap serves "Access blocked" tiles to requests without a Referer,
         # and the page's own Referrer-Policy header would otherwise withhold it.
-        response = self.client.get(self.url)
-        self.assertEqual(response.headers['Referrer-Policy'], 'same-origin')
-        self.assertContains(response, "referrerPolicy: 'strict-origin-when-cross-origin'")
+        self.assertEqual(self.client.get(self.url).headers['Referrer-Policy'], 'same-origin')
+        self.assertIn("referrerPolicy: 'strict-origin-when-cross-origin'", self.script())
 
-    def test_empty_form(self):
-        response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, 'class="error"')
-
-    def test_error_is_shown(self):
-        response = self.client.get(self.url, {'start': 'Alpha, KS', 'finish': 'Atlantis, TX'})
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Could not find')
+    def test_script_escapes_response_text_it_writes_as_html(self):
+        # Station names and error messages come from data and from what the user typed, and
+        # parts of the page are built as HTML strings. A bare ${...} of such text would be
+        # an injection hole, so each must be wrapped in esc(). Popups use textContent instead.
+        html_builders = self.script().split('function popup(')[0] + self.script().split('// ---------- fuel timeline')[1]
+        for text in ('stop.name', 's.name', 's.city', 's.state', 'stop.city', 'body.start.name', 'body.finish.name',
+                     'error.message', 'error.code', 'example.label', 'meta.served_from', 'meta.routing_provider'):
+            self.assertNotRegex(html_builders, r'\$\{' + re.escape(text) + r'[^)]', text)
