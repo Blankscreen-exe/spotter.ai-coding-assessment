@@ -36,6 +36,13 @@ behind the design is in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## Run it
 
+> **Admin login for the demo:** username **`admin`**, password **`fuelroute-demo`**
+>
+> It signs you in to the settings drawer on the page (the gear button, then
+> "Sign in to edit") and to the Django admin at `/admin/`. The Docker stack
+> creates it on first start; on a run without Docker,
+> `python manage.py seed_admin` does.
+
 **With Docker** (PostgreSQL and Redis): `docker compose up --build`, then
 http://127.0.0.1:8000/. The first start runs the migrations and loads the
 reference data, which takes about twenty seconds. The stack is published to
@@ -189,7 +196,7 @@ pip install -r requirements-dev.txt                    # adds the linter and the
 ruff check . && ruff format --check .
 ```
 
-233 tests, 95% line coverage of the Python code. The routing providers and
+234 tests, 95% line coverage of the Python code. The routing providers and
 Nominatim are mocked, and the suite always uses a private cache. Twenty-six
 of the tests drive the map page in a real browser; they need the development
 requirements, an installed Chrome or Edge and the network (the page loads
@@ -249,11 +256,10 @@ of it is needed to check the points above.
   behind a request, and on the map page it follows the API calls the page
   makes. It adds 25 to 30 ms to each request;
   `DJANGO_DEBUG_TOOLBAR=false docker compose up` runs without it.
-- **An admin login for the demo.** The compose stack creates **admin** /
-  **fuelroute-demo** on first start, and `python manage.py seed_admin` does the
-  same for a local run. That password is published here, which is one reason
-  the stack is reachable from this machine only. With `DJANGO_DEBUG` off the
-  command never falls back to it.
+- **An admin login for the demo.** The login given under [Run it](#run-it),
+  **admin** / **fuelroute-demo**. That password is published here, which is one
+  reason the stack is reachable from this machine only. With `DJANGO_DEBUG` off
+  `seed_admin` never falls back to it: a password has to be given.
 - **Around the endpoint.** `GET /healthz/` returns 200 once the database
   answers and the station data is loaded, and 503 otherwise. The route endpoint
   allows 120 requests a minute per client address.

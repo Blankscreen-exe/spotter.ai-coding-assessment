@@ -602,7 +602,7 @@ that comes from data.
 
 ## 5. How it is verified
 
-- 233 automated tests covering 95% of the Python lines, run on both SQLite and
+- 234 automated tests covering 95% of the Python lines, run on both SQLite and
   PostgreSQL 17. Twenty-six of them drive the page in a real browser; those
   run where a browser is installed and are skipped in the Docker image.
 - A GitHub Actions workflow runs the linter and both test runs on every push.
