@@ -51,7 +51,6 @@ def launch(playwright):
     return None
 
 
-@unittest.skipIf(sync_playwright is None, 'Playwright is not installed (see requirements-dev.txt).')
 class OneAtATimeServerThread(LiveServerThread):
     """The test server, answering one request at a time.
 
@@ -67,6 +66,7 @@ class OneAtATimeServerThread(LiveServerThread):
         return WSGIServer((self.host, self.port), QuietWSGIRequestHandler, allow_reuse_address=False)
 
 
+@unittest.skipIf(sync_playwright is None, 'Playwright is not installed (see requirements-dev.txt).')
 class PageTestCase(StaticLiveServerTestCase):
     """The test trip in the database, the routing provider mocked, and a fresh browser page on the live server."""
 
