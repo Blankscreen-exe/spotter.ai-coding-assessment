@@ -1,11 +1,4 @@
-"""
-ASGI config for config project.
-
-It exposes the ASGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/6.1/howto/deployment/asgi/
-"""
+"""The application for an ASGI server. The compose stack runs gunicorn through wsgi.py; nothing here is async."""
 
 import os
 

@@ -6,7 +6,7 @@
 
   const config = JSON.parse(document.getElementById('planner-config').textContent);
   const DEFAULTS = config.defaults;  // what the server uses when a request does not say otherwise
-  const TABS = ['timeline', 'plan', 'tradeoff', 'api', 'server'];
+  const TABS = ['timeline', 'plan', 'tradeoff', 'geojson', 'api', 'server'];
   const EXAMPLES = [
     { label: 'Coast to coast', start: 'New York, NY', finish: 'Los Angeles, CA' },
     { label: 'Midwest to Gulf', start: 'Chicago, IL', finish: 'Houston, TX' },
@@ -31,6 +31,7 @@
   let tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'timeline';
   let dockOpen = TABS.includes(location.hash.slice(1));
   const comparisons = new Map();  // trip and starting fuel -> plans fetched for the "Stops against cost" tab, by cost
+  let geoWithStations = false;    // whether the GeoJSON tab also lists the stations passed over
 
   // ---------- talking to the API ----------
 
@@ -52,11 +53,14 @@
     return { request, status: response.status, body };
   }
 
-  // Leaving a number out lets the server use its own setting.
-  function buildRequest(start, finish, cost, fuel) {
-    const request = { start, finish };
+  // Leaving a number out lets the server use its own setting. The page also asks for the stations the
+  // planner chose from, to draw them; a plain API call is not sent them unless it asks.
+  // provider is only ever what a link named (the API's map_url repeats it); left out, the server's setting decides.
+  function buildRequest(start, finish, cost, fuel, provider) {
+    const request = { start, finish, include_candidates: true };
     if (cost !== undefined) request.stop_cost = cost;
     if (fuel !== undefined) request.initial_range_miles = fuel;
+    if (provider) request.provider = provider;
     return request;
   }
 
@@ -86,6 +90,16 @@
     referrerPolicy: 'strict-origin-when-cross-origin',
   }).addTo(map);
   const tripLayer = L.layerGroup().addTo(map);
+  const otherStops = L.layerGroup().addTo(map);  // where the neighbouring plans would stop
+  // The stations the planner passed over are drawn as dots on a canvas, which copes with hundreds of them.
+  // A dot is small, so the pointer counts as on it from a few pixels away. The canvas has a layer of its
+  // own, above the route line (which would otherwise cover the dots) and below the numbered stops.
+  map.createPane('stations').style.zIndex = 450;
+  const dots = L.canvas({ pane: 'stations', padding: 0.5, tolerance: 4 });
+  let passedOver = [];
+  // Seen from far out the dots all sit on the route line, so they shrink to a hint; closer in they grow.
+  const dotSize = () => (map.getZoom() <= 5 ? 2.5 : map.getZoom() <= 7 ? 3.5 : 4.5);
+  map.on('zoomend', () => passedOver.forEach((dot) => dot.setRadius(dotSize())));
   syncZoomButtons();  // now that the tile layer has told the map how far it can zoom
 
   function pin(lat, lon, html, size) {
@@ -116,6 +130,46 @@
     return box;
   }
 
+  // Where a fuel stop is drawn. The price file gives a station's town, not its position, so the data places
+  // it at the centre of that town, which can be a few miles from the road. The stations themselves are at
+  // exits on the route, so a stop is drawn at the point of the route nearest its town, and sits on the line.
+  // The stations passed over stay at their towns' centres: scattered beside the route, they show the band
+  // of country the planner chose from. Only the drawing moves: the API's own numbers are untouched.
+  let snappedTo = '';          // which route the answers below belong to
+  const snapped = new Map();   // "lat,lon" of a town -> [lat, lon] on that route
+  function onRoute(body, place) {
+    const line = body.route ? body.route.geometry.coordinates : [];
+    if (line.length < 2) return [place.lat, place.lon];
+    const route = [line.length, line[0], line[line.length >> 1], line[line.length - 1]].join('|');
+    if (route !== snappedTo) {
+      snappedTo = route;
+      snapped.clear();
+    }
+    const town = `${place.lat},${place.lon}`;
+    if (!snapped.has(town)) snapped.set(town, nearestOn(line, place.lat, place.lon));
+    return snapped.get(town);
+  }
+
+  // The point of a line ([[lon, lat], ...]) nearest to a place. Distances are judged on a flat sheet scaled
+  // for the place's latitude, which is exact enough over the few miles involved.
+  function nearestOn(line, lat, lon) {
+    const squash = Math.cos(lat * Math.PI / 180);
+    let least = Infinity, nearest = [lat, lon];
+    for (let i = 1; i < line.length; i++) {
+      // Both ends of this stretch, measured from the place.
+      const ax = (line[i - 1][0] - lon) * squash, ay = line[i - 1][1] - lat;
+      const dx = (line[i][0] - lon) * squash - ax, dy = line[i][1] - lat - ay;
+      const length = dx * dx + dy * dy;
+      const along = length ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / length)) : 0;
+      const x = ax + along * dx, y = ay + along * dy;
+      if (x * x + y * y < least) {
+        least = x * x + y * y;
+        nearest = [lat + y, lon + x / squash];
+      }
+    }
+    return nearest;
+  }
+
   function drawTrip(body) {
     tripLayer.clearLayers();
     const line = L.geoJSON(body.route, { style: { color: '#1d4ed8', weight: 4 } }).addTo(tripLayer);
@@ -123,12 +177,32 @@
       .bindPopup(popup('Start', [body.start.name])).addTo(tripLayer);
     flag(body.finish.lat, body.finish.lon)
       .bindPopup(popup('Finish', [body.finish.name])).addTo(tripLayer);
+    // The stations the planner chose from and passed over, as orange dots, so the choice can be seen. Stations
+    // are placed at their town's centre, so a town's stations share a spot: one dot for the town, listing them.
+    const chosen = new Set(body.fuel_stops.map((stop) => stop.station_id));
+    const towns = new Map();
+    for (const station of body.candidate_stations || []) {
+      if (chosen.has(station.station_id)) continue;
+      const spot = `${station.lat},${station.lon}`;
+      if (!towns.has(spot)) towns.set(spot, []);
+      towns.get(spot).push(station);
+    }
+    passedOver = [...towns.values()].map((stations) => {
+      const [first] = stations.sort((a, b) => a.price_per_gallon - b.price_per_gallon);
+      return L.circleMarker([first.lat, first.lon], { renderer: dots, radius: dotSize(), weight: 1, color: '#fff', fillColor: '#f97316', fillOpacity: 0.95 })
+        .bindTooltip(() => popup(`${first.city}, ${first.state}`, [
+          `Mile ${Math.round(first.mile_marker)}. Considered, not chosen:`,
+          ...stations.slice(0, 5).map((station) => `${station.name}, $${station.price_per_gallon.toFixed(3)} a gallon`),
+          ...(stations.length > 5 ? [`and ${stations.length - 5} more`] : []),
+        ])).addTo(tripLayer);
+    });
     for (const stop of body.fuel_stops) {
       const order = Number(stop.order);
-      pin(stop.lat, stop.lon, `<div class="pin" data-order="${order}" style="width:28px;height:28px">${order}</div>`, 28)
+      pin(...onRoute(body, stop), `<div class="pin" data-order="${order}" data-station="${Number(stop.station_id)}" style="width:28px;height:28px">${order}</div>`, 28)
         .bindPopup(popup(`${order}. ${stop.name}`, [
           `${stop.city}, ${stop.state}, mile ${Math.round(stop.mile_marker)}`,
           `${stop.gallons_purchased.toFixed(1)} gal at $${stop.price_per_gallon.toFixed(3)} = ${money(stop.cost)}`,
+          ...(stop.miles_off_route >= 0.1 ? [`Drawn where the route passes it. The town's centre is ${stop.miles_off_route} mi away.`] : []),
         ])).addTo(tripLayer);
     }
     routeBounds = line.getBounds();
@@ -152,6 +226,40 @@
   }
   map.on('resize', fitRoute);
   map.on('movestart', () => { if (!fitting) following = false; });  // a drag, zoom or scroll by the user
+
+  // While "Stops against cost" is open, the map also shows where the other plans in the table would stop:
+  // a faint ring for each stop that is not one of this plan's.
+  function drawOtherStops() {
+    otherStops.clearLayers();
+    const known = current && dockOpen && tab === 'tradeoff' && comparisons.get(comparisonKey(current));
+    if (!known) return;
+    const mine = new Set(current.body.fuel_stops.map((stop) => stop.station_id));
+    const others = new Map();  // station id -> the stop, and the settings whose plans use it
+    for (const cost of comparedCosts(current.body.planning.stop_cost)) {
+      for (const stop of known.plans.has(cost) ? known.plans.get(cost).stops : []) {
+        if (mine.has(stop.station_id)) continue;
+        if (!others.has(stop.station_id)) others.set(stop.station_id, { stop, costs: [] });
+        others.get(stop.station_id).costs.push('$' + Number(cost));
+      }
+    }
+    for (const { stop, costs } of others.values()) {
+      pin(...onRoute(current.body, stop), `<div class="ghost" data-station="${Number(stop.station_id)}"></div>`, 16)
+        .bindTooltip(popup(stop.name, [
+          `${stop.city}, ${stop.state}, mile ${Math.round(stop.mile_marker)}`,
+          `$${stop.price_per_gallon.toFixed(3)} a gallon. A stop when one costs ${costs.join(' or ')}.`,
+        ])).addTo(otherStops);
+    }
+  }
+
+  // Pointing at a row of that table picks out the row's plan on the map: its stops stay as they are and
+  // every other stop fades. null puts the map back.
+  function pickOutPlan(cost) {
+    const known = current && comparisons.get(comparisonKey(current));
+    const plan = known && cost !== null && known.plans.get(cost);
+    document.body.classList.toggle('comparing', Boolean(plan));
+    const stops = new Set(plan ? plan.stops.map((stop) => String(stop.station_id)) : []);
+    document.querySelectorAll('[data-station]').forEach((node) => node.classList.toggle('in-plan', stops.has(node.dataset.station)));
+  }
 
   // ---------- fuel timeline ----------
 
@@ -212,6 +320,75 @@
 
   const comparisonKey = (call) => `${call.body.start.name}|${call.body.finish.name}|${call.body.vehicle.initial_range_miles}`;
 
+  // The plan as a GeoJSON FeatureCollection: the route line, its two ends, each fuel stop and, if asked,
+  // the stations passed over. The colour and symbol properties are the "simplestyle" ones that geojson.io
+  // and GitHub draw from, so it looks there much as it does here.
+  function tripGeoJSON(body, withPassedOver) {
+    const point = (place, properties) => ({
+      type: 'Feature', properties, geometry: { type: 'Point', coordinates: [place.lon, place.lat] },
+    });
+    // A fuel stop goes where the map draws it, on the route, so that it sits on the line elsewhere too.
+    // Where the data has it, and how far that is from the route, go along as properties.
+    const station = (place, properties) => {
+      const [lat, lon] = onRoute(body, place);
+      return point({ lat: Number(lat.toFixed(5)), lon: Number(lon.toFixed(5)) }, {
+        ...properties, miles_off_route: place.miles_off_route, town_centre: [place.lon, place.lat],
+      });
+    };
+    const chosen = new Set(body.fuel_stops.map((stop) => stop.station_id));
+    const passedOver = withPassedOver ? (body.candidate_stations || []).filter((other) => !chosen.has(other.station_id)) : [];
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: {
+            name: `${body.start.name} to ${body.finish.name}`,
+            distance_miles: body.summary.distance_miles,
+            duration_hours: body.summary.duration_hours,
+            fuel_stops: body.summary.fuel_stops,
+            total_fuel_cost: body.summary.total_fuel_cost,
+            fuel_used_cost: body.summary.fuel_used_cost,
+            stroke: '#1d4ed8',
+            'stroke-width': 4,
+          },
+          geometry: body.route.geometry,
+        },
+        point(body.start, { role: 'start', name: body.start.name, 'marker-color': '#15803d' }),
+        ...body.fuel_stops.map((stop) => station(stop, {
+          role: 'fuel stop',
+          order: stop.order,
+          name: stop.name,
+          address: stop.address,
+          city: stop.city,
+          state: stop.state,
+          mile_marker: stop.mile_marker,
+          price_per_gallon: stop.price_per_gallon,
+          gallons_purchased: stop.gallons_purchased,
+          cost: stop.cost,
+          'marker-color': '#1d4ed8',
+          ...(stop.order <= 9 ? { 'marker-symbol': String(stop.order) } : {}),  // the symbols stop at 9
+        })),
+        point(body.finish, { role: 'finish', name: body.finish.name, 'marker-color': '#b91c1c' }),
+        ...passedOver.map((other) => point(other, {
+          role: 'considered, not chosen',
+          name: other.name,
+          city: other.city,
+          state: other.state,
+          mile_marker: other.mile_marker,
+          miles_off_route: other.miles_off_route,
+          price_per_gallon: other.price_per_gallon,
+          'marker-color': '#f97316',
+          'marker-size': 'small',
+        })),
+      ],
+    };
+  }
+
+  // One feature to a line: still valid JSON, and the long route line does not bury the rest.
+  const geoText = (collection) => '{"type":"FeatureCollection","features":[\n'
+    + collection.features.map((feature) => JSON.stringify(feature)).join(',\n') + '\n]}';
+
   const PANELS = {
     timeline: () => '<svg id="chart" role="img" aria-label="Fuel in the tank along the trip"></svg>',
 
@@ -230,14 +407,15 @@
       if (!comparisons.has(key)) comparisons.set(key, { plans: new Map() });
       const known = comparisons.get(key);
       if (known.failed) return errorHtml(known.failed);
-      known.plans.set(selected, body.summary);  // the plan on screen is one of the five
+      known.plans.set(selected, { summary: body.summary, stops: body.fuel_stops });  // the plan on screen is one of the five
       const costs = comparedCosts(selected);
       if (costs.some((cost) => !known.plans.has(cost))) loadComparison(current, costs);
-      const cheapest = Math.min(...costs.filter((cost) => known.plans.has(cost)).map((cost) => known.plans.get(cost).total_fuel_cost));
-      return '<p class="note">This trip at your cost per stop and at the two settings either side of it. Click a row to use it.</p>' +
+      const cheapest = Math.min(...costs.filter((cost) => known.plans.has(cost)).map((cost) => known.plans.get(cost).summary.total_fuel_cost));
+      return '<p class="note">This trip at your cost per stop and at the two settings either side of it. Click a row to use it. ' +
+        'The rings on the map are stops the other plans would make; point at a row to pick out its plan.</p>' +
         '<table><tr><th>Cost per stop</th><th class="num">Stops</th><th class="num">Fuel bill</th><th class="num">Over the cheapest</th></tr>' +
         costs.map((cost) => {
-          const summary = known.plans.get(cost);
+          const summary = known.plans.has(cost) && known.plans.get(cost).summary;
           const tag = (cost === selected ? ' (selected)' : '') + (cost === DEFAULTS.stopCost ? ' (server default)' : '');
           const start = `<tr class="pick ${cost === selected ? 'current' : ''}" data-cost="${Number(cost)}"><td>$${Number(cost)}${tag}</td>`;
           // A row still on its way keeps its place, so the table does not jump as the counter moves.
@@ -246,6 +424,48 @@
           return start + `<td class="num">${Number(summary.fuel_stops)}</td><td class="num">${money(summary.total_fuel_cost)}</td>
             <td class="num">${over < 0.005 ? '&ndash;' : '+' + money(over)}</td></tr>`;
         }).join('') + '</table>';
+    },
+
+    // The plan as GeoJSON, to copy into geojson.io or any other map tool. Built from elements, not markup.
+    geojson: (body) => {
+      const collection = tripGeoJSON(body, geoWithStations);
+      const text = geoText(collection);
+      const make = (tag, properties) => Object.assign(document.createElement(tag), properties);
+
+      const copy = make('button', { type: 'button', className: 'secondary', textContent: 'Copy' });
+      const tick = make('input', { type: 'checkbox', checked: geoWithStations });
+      const choice = make('label');
+      choice.append(tick, ' Include the stations passed over');
+      const note = make('span', { className: 'note' });
+      note.append(
+        `${collection.features.length} features, ${Math.max(1, Math.round(text.length / 1024))} KB. Paste it into `,
+        make('a', { href: 'https://geojson.io/', target: '_blank', rel: 'noopener', textContent: 'geojson.io' }),
+        '.',
+      );
+      const area = make('textarea', { readOnly: true, spellcheck: false, value: text });
+      area.setAttribute('aria-label', 'The plan as GeoJSON');
+
+      copy.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (error) {
+          area.select();  // no clipboard access (an insecure address, say): fall back to the old way
+          document.execCommand('copy');
+        }
+        copy.textContent = 'Copied';
+        setTimeout(() => { copy.textContent = 'Copy'; }, 1500);
+      });
+      tick.addEventListener('change', () => {
+        geoWithStations = tick.checked;
+        showPanel();
+      });
+      area.addEventListener('focus', () => area.select());
+
+      const bar = make('div', { className: 'output-bar' });
+      bar.append(copy, choice, note);
+      const box = make('div', { className: 'output' });
+      box.append(bar, area);
+      return box;
     },
 
     // Built with textContent so that nothing in a response can be read as HTML.
@@ -262,7 +482,9 @@
         pre.textContent = text;
         box.append(head, pre);
       };
-      block('Request', `curl -X POST ${url} \\\n  -H "Content-Type: application/json" \\\n  -d '${JSON.stringify(call.request)}'`);
+      // Inside single quotes a shell reads everything as it stands except a single quote: "Coeur d'Alene, ID".
+      const json = JSON.stringify(call.request).replaceAll("'", "'\\''");
+      block('Request', `curl -X POST ${url} \\\n  -H "Content-Type: application/json" \\\n  -d '${json}'`);
       block(`Response: HTTP ${call.status}`, JSON.stringify(body, null, 2));
       return box;
     },
@@ -271,7 +493,7 @@
         <dt>Health</dt><dd>${health ? esc(health.status) : 'unknown'} (GET ${esc(config.healthUrl)})</dd>
         <dt>Stations loaded</dt><dd>${health && health.stations ? Number(health.stations).toLocaleString() : 'unknown'}</dd>
         <dt>This plan</dt><dd>served from ${esc(body.meta.served_from)}, ${plural(Number(body.meta.routing_api_calls), 'routing call')}, ${Number(body.meta.elapsed_ms)} ms on the server</dd>
-        <dt>Stations on this route</dt><dd>${Number(body.meta.stations_considered)}</dd>
+        <dt>Stations on this route (the orange dots)</dt><dd>${Number(body.meta.stations_considered)}</dd>
         <dt>Routing provider</dt><dd>${esc(body.meta.routing_provider)}</dd>
         <dt>Vehicle</dt><dd>${Number(body.vehicle.max_range_miles)} mile range, ${Number(body.vehicle.miles_per_gallon)} miles per gallon</dd>
       </dl>
@@ -287,12 +509,17 @@
       button.setAttribute('aria-expanded', shown);
     });
     $('collapse').hidden = !dockOpen;
-    if (!dockOpen) return;  // what the panel last held stays there while it slides shut
+    pickOutPlan(null);
+    if (!dockOpen) {  // what the panel last held stays there while it slides shut
+      drawOtherStops();
+      return;
+    }
     const content = PANELS[tab](current.body);
     if (typeof content === 'string') $('panel').innerHTML = content;
     else $('panel').replaceChildren(content);
     if (tab === 'timeline') drawChart(current.body);
     if (tab === 'tradeoff') showSelectedRow();
+    drawOtherStops();
   }
 
   // The drawer is short, so the comparison scrolls inside it. The selected row is kept in the middle of
@@ -336,15 +563,15 @@
     known.loading = true;
     for (const cost of costs.filter((each) => !known.plans.has(each))) {
       const answer = await callApi({
-        start: call.request.start, finish: call.request.finish, stop_cost: cost,
-        initial_range_miles: call.body.vehicle.initial_range_miles, include_geometry: false,
+        ...buildRequest(call.request.start, call.request.finish, cost, call.body.vehicle.initial_range_miles, call.request.provider),
+        include_candidates: false, include_geometry: false,
       });
       if (answer.status !== 200) {
         known.failed = answer;
         setTimeout(() => { delete known.failed; }, 5000);  // allow a retry, for instance once a rate limit has passed
         break;
       }
-      known.plans.set(cost, answer.body.summary);
+      known.plans.set(cost, { summary: answer.body.summary, stops: answer.body.fuel_stops });
     }
     known.loading = false;
     if (tab === 'tradeoff' && current && comparisonKey(current) === key) showPanel();
@@ -376,6 +603,9 @@
     document.body.classList.remove('empty');
     $('tripName').innerHTML = `${esc(body.start.name)} <span class="arrow">&rarr;</span> ${esc(body.finish.name)}`;
     $('sumCost').textContent = money(body.summary.total_fuel_cost);
+    const allFuel = body.summary.fuel_used_cost;  // null when the route passes no station to price it by
+    $('sumAll').textContent = allFuel === null ? '' : money(allFuel);
+    $('sumAll').parentElement.hidden = allFuel === null;
     $('sumStops').textContent = body.summary.fuel_stops;
     $('sumMiles').textContent = Math.round(body.summary.distance_miles).toLocaleString();
     $('sumGallons').textContent = body.summary.gallons_purchased.toFixed(1);
@@ -388,6 +618,7 @@
     showPanel();
     const query = new URLSearchParams(call.request);
     query.delete('include_geometry');
+    query.delete('include_candidates');
     history.replaceState(null, '', `${location.pathname}?${query}${dockOpen ? '#' + tab : ''}`);
   }
 
@@ -395,7 +626,7 @@
     clearTimeout(planTimer);
     const ticket = ++sequence;
     $('strip').classList.add('busy');
-    const call = await callApi(buildRequest(current.request.start, current.request.finish, cost.value, fuel.value));
+    const call = await callApi(buildRequest(current.request.start, current.request.finish, cost.value, fuel.value, current.request.provider));
     if (ticket !== sequence) return;  // a newer change is already on its way
     $('strip').classList.remove('busy');
     lastCall = call;
@@ -409,7 +640,89 @@
 
   // ---------- onboarding ----------
 
+  // Each of the two boxes offers places while a name is being typed, from GET /api/v1/places/?q=...
+  // Nothing is picked on the visitor's behalf: Enter sends what is typed, unless an arrow key or a
+  // click has chosen a row. So a "lat,lon", or a town the list does not offer, still goes through.
+  // Returns the function that puts the list away.
+  function offerPlaces(input, list) {
+    const known = new Map();  // what was typed -> the names found, so going back over the same letters asks nothing
+    let names = [], picked = -1, ticket = 0, timer = null;
+
+    function draw() {
+      list.replaceChildren(...names.map((name, index) => {
+        const row = document.createElement('li');
+        row.id = `${list.id}-${index}`;
+        row.setAttribute('role', 'option');
+        row.setAttribute('aria-selected', index === picked);
+        row.classList.toggle('on', index === picked);
+        row.textContent = name;  // it comes from the place table, which is still data: never markup
+        return row;
+      }));
+      list.hidden = !names.length;
+      input.setAttribute('aria-expanded', names.length > 0);
+      if (picked >= 0) input.setAttribute('aria-activedescendant', `${list.id}-${picked}`);
+      else input.removeAttribute('aria-activedescendant');
+    }
+
+    function close() {
+      ticket++;  // an answer still on its way is no longer wanted
+      clearTimeout(timer);
+      names = [];
+      picked = -1;
+      draw();
+    }
+
+    function choose(name) {
+      input.value = name;
+      close();
+    }
+
+    async function look() {
+      const typed = input.value.trim().toLowerCase();
+      if (typed.length < 2) { close(); return; }
+      const mine = ++ticket;
+      if (!known.has(typed)) {
+        try {
+          const response = await fetch(`${config.placesUrl}?q=${encodeURIComponent(typed)}`);
+          if (response.ok) known.set(typed, (await response.json()).places.map((place) => place.name));
+        } catch (error) { /* no list this time; the box still works as a plain one */ }
+      }
+      if (mine !== ticket || document.activeElement !== input) return;  // typed on since, or left the box
+      names = known.get(typed) || [];
+      picked = -1;
+      draw();
+    }
+
+    input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(look, 150); });
+    input.addEventListener('keydown', (event) => {
+      if (list.hidden) return;
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        // Round and round, by way of "nothing picked": past the last row is what was typed.
+        const step = event.key === 'ArrowDown' ? 1 : -1, stops = names.length + 1;
+        picked = (picked + 1 + step + stops) % stops - 1;
+        draw();
+      } else if (event.key === 'Enter' && picked >= 0) {
+        event.preventDefault();  // this Enter chooses the row; the next one moves on
+        choose(names[picked]);
+      } else if (event.key === 'Escape') {
+        event.stopPropagation();
+        close();
+      }
+    });
+    input.addEventListener('blur', close);
+    // mousedown, not click: a click first takes the focus from the box, and losing it puts the list away.
+    list.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+      const row = event.target.closest('li');
+      if (row) choose(row.textContent);
+    });
+    return close;
+  }
+  const placeLists = [offerPlaces($('start'), $('startPlaces')), offerPlaces($('finish'), $('finishPlaces'))];
+
   function show(step) {
+    placeLists.forEach((close) => close());
     for (const id of ['askStart', 'askFinish', 'working']) $(id).hidden = id !== step;
     $('dot2').classList.toggle('on', step !== 'askStart');
     if (step === 'askStart') $('start').focus();
@@ -547,6 +860,11 @@
     showPanel();
     rememberTab();
   });
+  $('panel').addEventListener('mouseover', (event) => {
+    const row = event.target.closest('tr.pick');
+    pickOutPlan(row ? Number(row.dataset.cost) : null);
+  });
+  $('panel').addEventListener('mouseleave', () => pickOutPlan(null));
   $('panel').addEventListener('click', (event) => {
     const row = event.target.closest('tr.pick');
     if (!row) return;
@@ -624,7 +942,7 @@
         placeholder="${provider.has_key ? 'Paste a new key to replace the stored one' : 'Paste the API key'}">
       ${keyPage ? `<a class="getkey" href="${esc(keyPage)}" target="_blank" rel="noopener noreferrer">${provider.has_key ? 'Get another key' : 'No key yet? Get a free one'} from ${esc(providerName)} &#8599;</a>` : ''}
       <p class="note">${provider.has_key ? 'Leave this empty to keep the stored key.' : 'Needed before the server can switch to this provider.'}
-        It is stored encrypted and never shown again.</p>
+        It is stored encrypted, and this page never shows it again.</p>
       <div class="problem" data-problem="provider_keys.${esc(provider.name)}"></div>`;
   }
 
@@ -851,7 +1169,7 @@
     $('finish').value = asked.get('finish');
     const number = (name, fallback) => (asked.get(name) !== null && asked.get(name) !== '' && !Number.isNaN(Number(asked.get(name))) ? Number(asked.get(name)) : fallback);
     $('onboarding').hidden = false;
-    firstPlan(buildRequest(asked.get('start'), asked.get('finish'), number('stop_cost', undefined), number('initial_range_miles', undefined)));
+    firstPlan(buildRequest(asked.get('start'), asked.get('finish'), number('stop_cost', undefined), number('initial_range_miles', undefined), asked.get('provider')));
   } else {
     openOnboarding();
   }

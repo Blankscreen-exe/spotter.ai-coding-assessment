@@ -21,5 +21,5 @@ def decode_polyline(text, precision=5):
     position = np.arange(len(chunks)) - np.repeat(starts, lengths)
     numbers = np.add.reduceat((chunks & 0x1F) << (5 * position), starts)
     steps = np.where(numbers & 1, ~(numbers >> 1), numbers >> 1).reshape(-1, 2)  # zigzag -> signed
-    lat_lon = np.cumsum(steps, axis=0) / 10 ** precision
+    lat_lon = np.cumsum(steps, axis=0) / 10**precision
     return lat_lon[:, ::-1]

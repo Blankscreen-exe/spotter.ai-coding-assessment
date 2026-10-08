@@ -1,7 +1,8 @@
-"""Runtime settings backed by the Setting table.
+"""Which runtime settings exist: their names, defaults and how a value is checked.
 
 Every setting has a code default here, so the app runs on an empty table; a row
-in the table overrides the default without a deploy.
+in the Setting table overrides the default without a deploy. Reading and
+writing that table is the job of services/server_settings.py.
 """
 
 import math
@@ -25,7 +26,7 @@ def _number(raw):
     try:
         value = float(raw)
     except (TypeError, ValueError):
-        raise ValueError('must be a number')
+        raise ValueError('must be a number') from None
     if not math.isfinite(value):
         raise ValueError('must be a finite number')
     return value
@@ -43,6 +44,23 @@ def _non_negative_float(raw):
     if not value >= 0:
         raise ValueError('must be zero or more')
     return value
+
+
+def _positive_up_to(limit):
+    def parse(raw):
+        value = _positive_float(raw)
+        if value > limit:
+            raise ValueError(f'must be {limit:g} or less')
+        return value
+
+    return parse
+
+
+# The widest the corridor may be set. Choosing the stops takes time that grows with
+# the square of the number of stations in it: 0.04 s for a cross-country trip at
+# 5 miles, 0.16 s at 25, over a second at 100. Past 25 miles a station is also hard
+# to call "on the route", since the detour to reach it is not counted.
+MAX_CORRIDOR_MILES = 25
 
 
 def _provider(raw):
@@ -67,23 +85,32 @@ PROVIDERS_NEEDING_A_KEY = set(PROVIDER_KEY_PAGES)
 
 DEFINITIONS = {
     ROUTING_PROVIDER: Definition(
-        PROVIDER_OSRM, _provider,
+        PROVIDER_OSRM,
+        _provider,
         'Routing API used when a request does not name one: osrm or openrouteservice.',
         label='Routing provider',
     ),
     CORRIDOR_MILES: Definition(
-        '5', _positive_float,
-        'How far from the route line a station may be and still count as on the route.',
-        label='Station corridor', unit='miles',
+        '5',
+        _positive_up_to(MAX_CORRIDOR_MILES),
+        f'How far from the route line a station may be and still count as on the route. {MAX_CORRIDOR_MILES} at most.',
+        label='Station corridor',
+        unit='miles',
     ),
     RANGE_MILES: Definition(
-        '500', _positive_float, 'Distance the vehicle covers on a full tank.', label='Vehicle range', unit='miles',
+        '500',
+        _positive_float,
+        'Distance the vehicle covers on a full tank.',
+        label='Vehicle range',
+        unit='miles',
     ),
     MPG: Definition('10', _positive_float, 'Fuel economy in miles per gallon.', label='Fuel economy', unit='mpg'),
     STOP_COST: Definition(
-        '5', _non_negative_float,
+        '5',
+        _non_negative_float,
         'Dollars one extra fuel stop is worth avoiding. 0 gives the cheapest fuel bill regardless of stops.',
-        label='Cost per stop', unit='USD',
+        label='Cost per stop',
+        unit='USD',
     ),
 }
 
@@ -94,14 +121,3 @@ DISPLAY_ORDER = (ROUTING_PROVIDER, STOP_COST, RANGE_MILES, MPG, CORRIDOR_MILES)
 def to_stored(value):
     """A parsed value as the text kept in the Setting table: 8.0 is stored as "8"."""
     return f'{value:g}' if isinstance(value, float) else str(value)
-
-
-def load_settings():
-    """All settings as parsed values, read with a single query."""
-    from .models import Setting
-
-    stored = dict(Setting.objects.values_list('key', 'value'))
-    return {
-        key: definition.parse(stored.get(key, definition.default))
-        for key, definition in DEFINITIONS.items()
-    }

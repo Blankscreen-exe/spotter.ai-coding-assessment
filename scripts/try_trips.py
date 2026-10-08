@@ -1,6 +1,6 @@
 """Plan a few real trips and print the result. Handy for a quick manual check.
 
-    python scripts/try_trips.py "New York, NY" "Los Angeles, CA"
+python scripts/try_trips.py "New York, NY" "Los Angeles, CA"
 """
 
 import os
@@ -28,22 +28,22 @@ DEFAULT_TRIPS = [
 def show(start, finish):
     began = time.perf_counter()
     try:
-        plan = plan_trip(start, finish)
+        trip = plan_trip(start, finish)
     except PlannerError as exc:
         print(f'{start} -> {finish}: {exc.code}: {exc.message}')
         return
     elapsed = (time.perf_counter() - began) * 1000
-    summary, meta = plan['summary'], plan['meta']
+    plan = trip.plan
     print(
-        f'{start} -> {finish}: {summary["distance_miles"]} mi, {summary["fuel_stops"]} stops, '
-        f'${summary["total_fuel_cost"]:.2f} | {elapsed:.0f} ms, {meta["routing_api_calls"]} routing call(s), '
-        f'{meta["stations_considered"]} stations on route'
+        f'{start} -> {finish}: {plan.distance_miles:.1f} mi, {len(plan.stops)} stops, '
+        f'${plan.total_cost:.2f} | {elapsed:.0f} ms, {trip.routing_calls} routing call(s), '
+        f'{len(plan.candidates)} stations on route'
     )
-    for stop in plan['fuel_stops']:
+    for stop in plan.stops:
         print(
-            f'   {stop["order"]}. mile {stop["mile_marker"]:>7} {stop["name"]}, {stop["city"]}, {stop["state"]}'
-            f' | ${stop["price_per_gallon"]:.3f} x {stop["gallons_purchased"]} gal = ${stop["cost"]:.2f}'
-            f' (arrived with {stop["gallons_on_arrival"]} gal, {stop["miles_off_route"]} mi off route)'
+            f'   {stop.order}. mile {stop.mile:>7.1f} {stop.station.name}, {stop.station.city}, {stop.station.state}'
+            f' | ${stop.station.price:.3f} x {stop.gallons_purchased:.2f} gal = ${stop.cost:.2f}'
+            f' (arrived with {stop.gallons_on_arrival:.2f} gal, {stop.off_route_miles:.1f} mi off route)'
         )
 
 

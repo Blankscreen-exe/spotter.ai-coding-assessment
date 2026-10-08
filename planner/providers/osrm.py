@@ -1,5 +1,6 @@
 from .. import conf
 from ..exceptions import RouteNotFound, RoutingProviderError
+from ..services.places import Location
 from .base import METERS_PER_MILE, Route, RoutingProvider
 from .polyline import decode_polyline
 
@@ -9,14 +10,18 @@ class OSRMProvider(RoutingProvider):
     label = 'OSRM'
     base_url_setting = 'OSRM_BASE_URL'
 
-    def route(self, start, finish):
-        url = (
-            f'{self.base_url}/route/v1/driving/'
-            f'{start.lon:.6f},{start.lat:.6f};{finish.lon:.6f},{finish.lat:.6f}'
+    def route(self, start: Location, finish: Location) -> Route:
+        url = f'{self.base_url}/route/v1/driving/{start.lon:.6f},{start.lat:.6f};{finish.lon:.6f},{finish.lat:.6f}'
+        response = self._send(
+            'GET',
+            url,
+            params={
+                'overview': 'full',
+                'geometries': 'polyline',
+                'steps': 'false',
+                'alternatives': 'false',
+            },
         )
-        response = self._send('GET', url, params={
-            'overview': 'full', 'geometries': 'polyline', 'steps': 'false', 'alternatives': 'false',
-        })
         body = self._json(response)
         code = body.get('code')
         if code in ('NoRoute', 'NoSegment'):

@@ -32,7 +32,12 @@ class Place(models.Model):
     source = models.CharField(max_length=12, choices=SOURCE_CHOICES, default=SOURCE_CENSUS)
 
     class Meta:
-        indexes = [models.Index(fields=['key', 'state'], name='place_key_state_idx')]
+        indexes = [
+            models.Index(fields=['key', 'state'], name='place_key_state_idx'),
+            # For "names starting with ...", which the search box asks. PostgreSQL only uses an
+            # index for LIKE 'chi%' when it is built this way; other databases ignore the class.
+            models.Index(fields=['key'], name='place_key_prefix_idx', opclasses=['varchar_pattern_ops']),
+        ]
         constraints = [
             models.CheckConstraint(condition=Q(lat__gte=-90) & Q(lat__lte=90), name='place_lat_in_range'),
             models.CheckConstraint(condition=Q(lon__gte=-180) & Q(lon__lte=180), name='place_lon_in_range'),
@@ -58,9 +63,7 @@ class FuelStation(models.Model):
     price = models.DecimalField(
         max_digits=8, decimal_places=5, help_text='USD per gallon; mean of the rows sharing this OPIS ID.'
     )
-    place = models.ForeignKey(
-        Place, null=True, blank=True, on_delete=models.SET_NULL, related_name='stations'
-    )
+    place = models.ForeignKey(Place, null=True, blank=True, on_delete=models.SET_NULL, related_name='stations')
 
     class Meta:
         constraints = [
@@ -74,11 +77,12 @@ class FuelStation(models.Model):
 class Setting(models.Model):
     """One row per runtime setting. Allowed keys and defaults live in conf.py."""
 
-    key = models.CharField(
-        max_length=64, unique=True, choices=[(k, k) for k in conf.DEFINITIONS]
-    )
+    key = models.CharField(max_length=64, unique=True, choices=[(k, k) for k in conf.DEFINITIONS])
     value = models.CharField(max_length=200)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'{self.key} = {self.value}'
 
     def clean(self):
         definition = conf.DEFINITIONS.get(self.key)
@@ -87,10 +91,7 @@ class Setting(models.Model):
         try:
             definition.parse(self.value)
         except ValueError as exc:
-            raise ValidationError({'value': f'Invalid value: {exc}'})
-
-    def __str__(self):
-        return f'{self.key} = {self.value}'
+            raise ValidationError({'value': f'Invalid value: {exc}'}) from exc
 
 
 class ProviderCredential(models.Model):
@@ -100,8 +101,8 @@ class ProviderCredential(models.Model):
     api_key = EncryptedTextField()
     updated_at = models.DateTimeField(auto_now=True)
 
-    def masked(self):
-        return '*' * 8 + self.api_key[-4:] if self.api_key else ''
-
     def __str__(self):
         return self.provider
+
+    def masked(self):
+        return '*' * 8 + self.api_key[-4:] if self.api_key else ''

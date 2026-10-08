@@ -1,11 +1,11 @@
 {
   "info": {
     "name": "Fuel route planner",
-    "description": "Requests for the fuel route planner API. Set the base_url collection variable if the server is not on localhost:8000.",
+    "description": "Requests for the fuel route planner API. Set the base_url collection variable if the server is not on 127.0.0.1:8000.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    {"key": "base_url", "value": "http://localhost:8000"}
+    {"key": "base_url", "value": "http://127.0.0.1:8000"}
   ],
   "item": [
     {
@@ -48,6 +48,18 @@
       }
     },
     {
+      "name": "With the stations it chose from",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{base_url}}/api/v1/route/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Chicago, IL\",\n  \"finish\": \"Houston, TX\",\n  \"include_geometry\": false,\n  \"include_candidates\": true\n}"
+        }
+      }
+    },
+    {
       "name": "Cheapest possible fuel bill (stop_cost 0)",
       "request": {
         "method": "POST",
@@ -56,6 +68,19 @@
         "body": {
           "mode": "raw",
           "raw": "{\n  \"start\": \"New York, NY\",\n  \"finish\": \"Los Angeles, CA\",\n  \"include_geometry\": false,\n  \"stop_cost\": 0\n}"
+        }
+      }
+    },
+    {
+      "name": "A short trip (the starting fuel covers it)",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{base_url}}/api/v1/route/",
+        "description": "No stops and total_fuel_cost 0, because the vehicle starts full. fuel_used_cost is what the fuel burned would cost.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Dallas, TX\",\n  \"finish\": \"Austin, TX\",\n  \"include_geometry\": false\n}"
         }
       }
     },
@@ -107,6 +132,14 @@
       "request": {
         "method": "GET",
         "url": "{{base_url}}/api/v1/settings/"
+      }
+    },
+    {
+      "name": "Places starting with (for a search box)",
+      "request": {
+        "method": "GET",
+        "description": "What the page's two location boxes ask as a name is typed. A state narrows it: q=springfield, m",
+        "url": "{{base_url}}/api/v1/places/?q=chi"
       }
     },
     {

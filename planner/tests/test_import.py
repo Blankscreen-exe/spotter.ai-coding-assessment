@@ -48,7 +48,9 @@ class ImportStationsTests(TestCase):
         self.assertEqual(merged.place.source, Place.SOURCE_CENSUS)
 
         geocoded = FuelStation.objects.get(opis_id=3).place
-        self.assertEqual((geocoded.source, geocoded.name, geocoded.lat), (Place.SOURCE_NOMINATIM, 'Breezewood', 39.9987))
+        self.assertEqual(
+            (geocoded.source, geocoded.name, geocoded.lat), (Place.SOURCE_NOMINATIM, 'Breezewood', 39.9987)
+        )
 
         self.assertIsNone(FuelStation.objects.get(opis_id=4).place)  # Nominatim had no answer
         self.assertEqual(FuelStation.objects.get(opis_id=5).place.name, 'McLean')  # "Mc Lean" in the file

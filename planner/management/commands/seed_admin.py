@@ -17,7 +17,8 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--reset-password', action='store_true',
+            '--reset-password',
+            action='store_true',
             help='If the user already exists, set its password again instead of leaving it alone.',
         )
 

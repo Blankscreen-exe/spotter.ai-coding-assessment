@@ -1,11 +1,4 @@
-"""
-WSGI config for config project.
-
-It exposes the WSGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/6.1/howto/deployment/wsgi/
-"""
+"""What gunicorn and runserver load: the application, and the one-off work done as a server process starts."""
 
 import os
 

@@ -1,25 +1,26 @@
 import json
 import re
-from pathlib import Path
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from unittest import mock
 
 import numpy as np
 from cryptography.fernet import Fernet
-from django.contrib.staticfiles import finders
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from planner import conf
-from planner.models import FuelStation, Place, ProviderCredential, Setting
-from planner.providers import PROVIDERS, Route
-from planner.services.places import normalize
-from planner.services.stations import reset_index
+from planner.exceptions import RoutingProviderError
+from planner.models import FuelStation, ProviderCredential, Setting
+from planner.providers import PROVIDERS
+from planner.services import trip
+from planner.services.places import Location
+from planner.services.stations import get_index, reset_index
 
-MILES_PER_DEGREE_LON_AT_40N = 52.93
-# A road along 40N from 100W to 80W, one point every half degree: about 1,059 miles.
-ROAD = np.array([[-100.0 + step / 2, 40.0] for step in range(41)])
-ROAD_MILES = 20 * MILES_PER_DEGREE_LON_AT_40N
+from .fixtures import ROAD_MILES, create_trip_data, routing_mock
 
 
 class TripFixture(TestCase):
@@ -27,34 +28,13 @@ class TripFixture(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        def place(name, state, lon):
-            return Place.objects.create(name=name, state=state, key=normalize(name), lat=40.0, lon=lon)
-
-        place('Alpha', 'KS', -100.0)
-        place('Omega', 'OH', -80.0)
-        # (town, longitude, price): miles 159, 370, 635 and 847 along the road.
-        for number, (town, lon, price) in enumerate(
-            [('Wayne', -97.0, '3.50'), ('Brook', -93.0, '3.00'), ('Carmel', -88.0, '3.20'), ('Dover', -84.0, '2.90')],
-            start=1,
-        ):
-            FuelStation.objects.create(
-                opis_id=number, name=f'{town} Truck Stop', address='I-70, EXIT 1',
-                city=town, state='KS', price=price, place=place(town, 'KS', lon),
-            )
-        FuelStation.objects.create(
-            opis_id=99, name='Nowhere Fuel', address='?', city='Nowhere', state='KS', price='1.00', place=None,
-        )
+        create_trip_data()
 
     def setUp(self):
         cache.clear()
         reset_index()
         self.addCleanup(reset_index)
-        patcher = mock.patch.object(
-            PROVIDERS[conf.PROVIDER_OSRM], 'route',
-            return_value=Route(conf.PROVIDER_OSRM, ROAD, ROAD_MILES, 16 * 3600),
-        )
-        self.route_call = patcher.start()
-        self.addCleanup(patcher.stop)
+        self.route_call = self.enterContext(routing_mock())
 
 
 class RouteApiTests(TripFixture):
@@ -81,6 +61,26 @@ class RouteApiTests(TripFixture):
         # Starts full, arrives empty: buys exactly the fuel the tank could not hold.
         self.assertAlmostEqual(body['summary']['gallons_purchased'], (ROAD_MILES - 500) / 10, places=1)
         self.assertNotIn('Nowhere Fuel', [stop['name'] for stop in stops])
+
+    def test_the_cost_of_all_the_fuel_used_counts_the_starting_fuel(self):
+        summary = self.plan().json()['summary']
+        # Every gallon burned, at what this plan pays for a gallon on average.
+        paid_per_gallon = summary['total_fuel_cost'] / summary['gallons_purchased']
+        self.assertAlmostEqual(summary['fuel_used_cost'], summary['gallons_used'] * paid_per_gallon, places=1)
+        self.assertGreater(summary['fuel_used_cost'], summary['total_fuel_cost'])
+
+    def test_a_trip_the_starting_fuel_covers_is_free_on_the_way_but_not_in_all(self):
+        Setting.objects.filter(key=conf.RANGE_MILES).update(value='1200')
+        summary = self.plan().json()['summary']
+        self.assertEqual((summary['fuel_stops'], summary['total_fuel_cost']), (0, 0.0))
+        # Nothing was bought, so the fuel burned is priced at the cheapest station on the route: $2.90.
+        self.assertEqual(summary['fuel_used_cost'], round(ROAD_MILES / 10 * 2.90, 2))
+
+    def test_with_no_station_on_the_route_that_cost_cannot_be_given(self):
+        Setting.objects.filter(key=conf.RANGE_MILES).update(value='1200')
+        FuelStation.objects.all().delete()
+        summary = self.plan().json()['summary']
+        self.assertEqual((summary['total_fuel_cost'], summary['fuel_used_cost']), (0.0, None))
 
     def test_picks_the_cheap_stations(self):
         stops = self.plan(stop_cost=0).json()['fuel_stops']
@@ -112,11 +112,43 @@ class RouteApiTests(TripFixture):
         self.assertEqual(body['vehicle']['miles_per_gallon'], 20.0)
         self.assertEqual(body['meta']['served_from'], 'route cache')
 
+    def test_a_wider_corridor_needs_the_route_again(self):
+        # What is kept of a route is its line and the stations matched to it, not the route as
+        # fetched. Matching under a different corridor therefore takes one more routing call.
+        self.plan()
+        Setting.objects.filter(key=conf.CORRIDOR_MILES).update(value='10')
+        self.assertEqual(self.plan().json()['meta']['routing_api_calls'], 1)
+        self.assertEqual(self.plan().json()['meta']['routing_api_calls'], 0)
+        self.assertEqual(self.route_call.call_count, 2)
+
+    def test_what_is_cached_for_a_plan_is_small(self):
+        self.plan()
+        self.plan(stop_cost=3)
+        # The test cache keeps each entry pickled, so its size can be read off. Two plans of one trip
+        # are two small entries for the stops and one larger one for the route they share.
+        sizes = {
+            key.split(':')[-2]: len(pickled)
+            for key, pickled in cache._cache.items()
+            if 'stops1' in key or 'ready1' in key
+        }
+        self.assertEqual(sorted(sizes), ['ready1', 'stops1'])
+        self.assertLess(sizes['stops1'], 2000)
+        self.assertGreater(sizes['ready1'], sizes['stops1'])
+        self.assertEqual(sum('stops1' in key for key in cache._cache), 2)
+
     def test_cached_plan_echoes_each_request_as_typed(self):
         self.plan()
         body = self.plan(start='alpha ks').json()
         self.assertEqual(body['meta']['served_from'], 'plan cache')
         self.assertEqual(body['start']['query'], 'alpha ks')
+
+    def test_the_address_works_without_its_last_slash(self):
+        # Django would answer a missing slash with a redirect, which a client follows with a GET and no body.
+        response = self.client.post(
+            self.url.rstrip('/'), {'start': 'Alpha, KS', 'finish': 'Omega, OH'}, content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['start']['name'], 'Alpha, KS')
 
     def test_get_with_query_string(self):
         response = self.client.get(self.url, {'start': 'Alpha, KS', 'finish': 'Omega, OH'})
@@ -126,6 +158,40 @@ class RouteApiTests(TripFixture):
 
     def test_geometry_can_be_left_out(self):
         self.assertNotIn('route', self.plan(include_geometry=False).json())
+
+    def test_stations_it_chose_from_are_listed_only_when_asked_for(self):
+        self.assertNotIn('candidate_stations', self.plan().json())  # the default response stays lean
+        body = self.plan(include_candidates=True).json()
+        stations = body['candidate_stations']
+        self.assertEqual(len(stations), body['meta']['stations_considered'])
+        self.assertEqual([s['city'] for s in stations], ['Wayne', 'Brook', 'Carmel', 'Dover'])  # in route order
+        self.assertEqual(
+            sorted(stations[0]),
+            [
+                'address',
+                'city',
+                'lat',
+                'lon',
+                'mile_marker',
+                'miles_off_route',
+                'name',
+                'price_per_gallon',
+                'state',
+                'station_id',
+            ],
+        )
+        # The chosen stops are among them, described the same way.
+        for stop in body['fuel_stops']:
+            self.assertIn({key: stop[key] for key in stations[0]}, stations)
+
+    def test_stations_it_chose_from_also_come_with_a_cached_plan_and_by_get(self):
+        first = self.plan(include_candidates=True).json()
+        again = self.client.get(
+            self.url, {'start': 'Alpha, KS', 'finish': 'Omega, OH', 'include_candidates': 'true'}
+        ).json()
+        self.assertEqual(again['meta']['served_from'], 'plan cache')
+        self.assertEqual(again['candidate_stations'], first['candidate_stations'])
+        self.assertNotIn('include_', again['map_url'])  # the link to the map carries the trip, not response options
 
     def test_initial_range_changes_the_plan(self):
         body = self.plan(initial_range_miles=200).json()
@@ -161,13 +227,17 @@ class RouteApiTests(TripFixture):
         self.assertEqual(response.json()['error']['code'], 'no_feasible_fuel_plan')
 
     def test_provider_without_a_key(self):
-        response = self.plan(provider='openrouteservice')
+        # A fault on the server's side, so it is also written to the server's log.
+        with self.assertLogs('django.request', level='ERROR') as logs:
+            response = self.plan(provider='openrouteservice')
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()['error']['code'], 'routing_provider_not_configured')
+        self.assertIn('Service Unavailable: /api/v1/route/', logs.output[0])
 
     def test_default_provider_comes_from_the_settings_table(self):
         Setting.objects.filter(key=conf.ROUTING_PROVIDER).update(value=conf.PROVIDER_ORS)
-        self.assertEqual(self.plan().status_code, 503)
+        with self.assertLogs('django.request', level='ERROR'):
+            self.assertEqual(self.plan().status_code, 503)
         self.assertEqual(self.plan(provider='osrm').status_code, 200)
 
     def test_vehicle_settings_come_from_the_settings_table(self):
@@ -191,8 +261,14 @@ class SettingsApiTests(TestCase):
         self.assertEqual(set(by_key), set(conf.DEFINITIONS))
         self.assertEqual(
             by_key[conf.STOP_COST],
-            {'key': 'stops.cost_per_stop', 'label': 'Cost per stop', 'value': 8.0, 'default': 5.0, 'unit': 'USD',
-             'description': conf.DEFINITIONS[conf.STOP_COST].help_text},
+            {
+                'key': 'stops.cost_per_stop',
+                'label': 'Cost per stop',
+                'value': 8.0,
+                'default': 5.0,
+                'unit': 'USD',
+                'description': conf.DEFINITIONS[conf.STOP_COST].help_text,
+            },
         )
         self.assertEqual(by_key[conf.RANGE_MILES]['value'], 500.0)
         self.assertEqual(by_key[conf.ROUTING_PROVIDER]['value'], 'osrm')
@@ -201,10 +277,18 @@ class SettingsApiTests(TestCase):
         providers = {provider['name']: provider for provider in self.settings()['providers']}
         self.assertEqual(
             providers['osrm'],
-            {'name': 'osrm', 'label': 'OSRM public server (no key)', 'active': True, 'needs_key': False,
-             'has_key': False, 'key_page': None},
+            {
+                'name': 'osrm',
+                'label': 'OSRM public server (no key)',
+                'active': True,
+                'needs_key': False,
+                'has_key': False,
+                'key_page': None,
+            },
         )
-        self.assertEqual((providers['openrouteservice']['active'], providers['openrouteservice']['needs_key']), (False, True))
+        self.assertEqual(
+            (providers['openrouteservice']['active'], providers['openrouteservice']['needs_key']), (False, True)
+        )
 
     def test_says_where_to_get_a_key_for_a_provider_that_needs_one(self):
         providers = {provider['name']: provider for provider in self.settings()['providers']}
@@ -222,9 +306,16 @@ class SettingsApiTests(TestCase):
         self.assertNotIn('api_key', response.content.decode())
 
     def test_a_visitor_cannot_write(self):
-        # Saving is PATCH and needs a signed-in account (see test_settings_api); nothing else writes.
+        # Saving is PATCH and needs a signed-in account (see test_settings_api). A visitor is told
+        # to sign in whatever the method, before learning which methods exist.
         body = {'settings': {conf.STOP_COST: 0}}
-        self.assertEqual(self.client.patch(self.url, body, content_type='application/json').status_code, 401)
+        for method in (self.client.patch, self.client.post, self.client.put, self.client.delete):
+            self.assertEqual(method(self.url, body, content_type='application/json').status_code, 401)
+        self.assertEqual(Setting.objects.get(key=conf.STOP_COST).value, '5')
+
+    def test_patch_is_the_only_way_to_write(self):
+        self.client.force_login(get_user_model().objects.create_superuser('boss', password=None))
+        body = {'settings': {conf.STOP_COST: 0}}
         for method in (self.client.post, self.client.put, self.client.delete):
             self.assertEqual(method(self.url, body, content_type='application/json').status_code, 405)
         self.assertEqual(Setting.objects.get(key=conf.STOP_COST).value, '5')
@@ -238,15 +329,16 @@ class RouteMapTests(TestCase):
     def config(self):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
-        embedded = re.search(r'<script id="planner-config" type="application/json">(.*?)</script>', response.content.decode())
+        embedded = re.search(
+            r'<script id="planner-config" type="application/json">(.*?)</script>', response.content.decode()
+        )
         return json.loads(embedded.group(1))
-
-    def script(self):
-        return Path(finders.find('planner/map.js')).read_text(encoding='utf-8')
 
     def test_site_root_opens_the_page(self):
         response = self.client.get('/', {'start': 'Alpha, KS', 'finish': 'Omega, OH'})
-        self.assertRedirects(response, self.url + '?start=Alpha%2C+KS&finish=Omega%2C+OH', fetch_redirect_response=False)
+        self.assertRedirects(
+            response, self.url + '?start=Alpha%2C+KS&finish=Omega%2C+OH', fetch_redirect_response=False
+        )
         self.assertEqual(response.status_code, 302)  # temporary, so browsers do not pin it
 
     def test_page_is_told_where_the_api_is(self):
@@ -269,14 +361,12 @@ class RouteMapTests(TestCase):
         content = self.client.get(self.url).content.decode()
         self.assertNotIn('type="range"', content)
         for name in ('cost', 'fuel'):
-            counter = content[content.index(f'<div class="knob" id="{name}"'):]
-            counter = counter[:counter.index('</div>')]
+            counter = content[content.index(f'<div class="knob" id="{name}"') :]
+            counter = counter[: counter.index('</div>')]
             # Lower on the left, raise on the right, the number between them.
             self.assertLess(counter.index('data-step="-1"'), counter.index('<output>'))
             self.assertLess(counter.index('<output>'), counter.index('data-step="1"'))
             self.assertEqual(counter.count('aria-label='), 2)
-        # Scrolling over a counter changes it, so the script has to be allowed to stop the page scrolling.
-        self.assertRegex(self.script(), r"addEventListener\('wheel',[\s\S]*?\{ passive: false \}")
 
     def test_a_link_with_a_trip_is_not_planned_on_the_server(self):
         # /map/?start=...&finish=... is what the API returns as map_url. The script reads the
@@ -298,53 +388,147 @@ class RouteMapTests(TestCase):
 
     def test_zoom_buttons_sit_in_the_trip_bar_in_place_of_the_map_corner_control(self):
         content = self.client.get(self.url).content.decode()
-        trip_bar = content[content.index('id="tripBar"'):content.index('id="tools"')]
+        trip_bar = content[content.index('id="tripBar"') : content.index('id="tools"')]
         self.assertLess(trip_bar.index('id="change"'), trip_bar.index('id="zoomOut"'))
         self.assertIn('id="zoomOut" aria-label="Zoom out" title="Zoom out"', trip_bar)
         self.assertIn('id="zoomIn" aria-label="Zoom in" title="Zoom in"', trip_bar)
-        self.assertIn("L.map('map', { zoomControl: false })", self.script())
 
-    def test_bottom_drawer_starts_closed_with_only_its_tab_names(self):
+    def test_bottom_drawer_is_sent_closed_with_only_its_tab_names(self):
         content = self.client.get(self.url).content.decode()
-        dock = content[content.index('id="dock"'):content.index('id="onboarding"')]
-        self.assertEqual(dock.count('class="tab" aria-expanded="false" aria-controls="panel"'), 5)
+        dock = content[content.index('id="dock"') : content.index('id="onboarding"')]
+        self.assertEqual(dock.count('class="tab" aria-expanded="false" aria-controls="panel"'), 6)
         self.assertIn('id="collapse" hidden', dock)
         self.assertNotIn('dock-open', content.split('<body')[1].split('>')[0])
-        styles = Path(finders.find('planner/map.css')).read_text(encoding='utf-8')
-        self.assertRegex(styles, r'#panel \{ height: 0;')
-        self.assertRegex(styles, r'body\.dock-open #panel \{ height: var\(--panel\)')
 
-    def test_tab_bar_cannot_grow_a_vertical_scrollbar(self):
-        # A tab that overlapped the line under the bar by a pixel once made the bar scroll.
-        styles = Path(finders.find('planner/map.css')).read_text(encoding='utf-8')
-        self.assertRegex(styles, r'\.tabs \{[^}]*overflow-y: hidden')
-        tab_rule = re.search(r'^\.tab \{([^}]*)\}', styles, re.MULTILINE).group(1)
-        self.assertNotIn('margin', tab_rule)
-
-    def test_settings_drawer_sits_beside_the_page_rather_than_over_it(self):
+    def test_settings_drawer_is_not_a_modal(self):
         content = self.client.get(self.url).content.decode()
-        self.assertIn('<aside class="drawer" id="settings" aria-labelledby="settingsTitle">', content)  # not a modal
+        self.assertIn('<aside class="drawer" id="settings" aria-labelledby="settingsTitle">', content)
         self.assertIn('aria-expanded="false" aria-controls="settings"', content)
-        styles = Path(finders.find('planner/map.css')).read_text(encoding='utf-8')
-        self.assertIn('body.settings-open { padding-right: var(--side); }', styles)
 
     def test_admin_button_opens_the_admin_panel(self):
         response = self.client.get(self.url)
         self.assertContains(response, f'id="openAdmin" href="{reverse("admin:index")}" target="_blank" rel="noopener"')
         self.assertEqual(reverse('admin:index'), '/admin/')
 
-    def test_map_tiles_are_requested_with_a_referer(self):
-        # OpenStreetMap serves "Access blocked" tiles to requests without a Referer,
-        # and the page's own Referrer-Policy header would otherwise withhold it.
-        self.assertEqual(self.client.get(self.url).headers['Referrer-Policy'], 'same-origin')
-        self.assertIn("referrerPolicy: 'strict-origin-when-cross-origin'", self.script())
+    # What the page does with all this (opening the drawer, re-planning, escaping text from data)
+    # is tested in a real browser: see test_page.py.
 
-    def test_script_escapes_response_text_it_writes_as_html(self):
-        # Station names and error messages come from data and from what the user typed, and
-        # parts of the page are built as HTML strings. A bare ${...} of such text would be
-        # an injection hole, so each must be wrapped in esc(). Popups use textContent instead.
-        html_builders = self.script().split('function popup(')[0] + self.script().split('// ---------- fuel timeline')[1]
-        for text in ('stop.name', 's.name', 's.city', 's.state', 'stop.city', 'body.start.name', 'body.finish.name',
-                     'error.message', 'error.code', 'example.label', 'meta.served_from', 'meta.routing_provider',
-                     'setting.label', 'setting.description', 'setting.key', 'provider.label', 'value.now', 'value.usual'):
-            self.assertNotRegex(html_builders, r'\$\{\s*' + re.escape(text) + r'\s*\}', text)
+
+class PlaceSearchTests(TestCase):
+    """GET /api/v1/places/?q=...: what the page's two location boxes ask as a name is typed."""
+
+    url = reverse('places')
+
+    @classmethod
+    def setUpTestData(cls):
+        create_trip_data()
+
+    def test_places_whose_name_starts_with_the_letters(self):
+        response = self.client.get(self.url, {'q': 'al'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'places': [{'name': 'Alpha, KS'}]})
+
+    def test_a_name_it_offers_is_one_the_route_endpoint_takes(self):
+        start = self.client.get(self.url, {'q': 'alp'}).json()['places'][0]['name']
+        finish = self.client.get(self.url, {'q': 'omega, o'}).json()['places'][0]['name']
+        with routing_mock():
+            planned = self.client.post(
+                reverse('route-plan'), {'start': start, 'finish': finish}, content_type='application/json'
+            )
+        self.assertEqual(planned.status_code, 200)
+
+    def test_nothing_typed_is_an_empty_list_not_an_error(self):
+        for query in ({}, {'q': ''}, {'q': 'a'}, {'q': 'zzzz'}):
+            response = self.client.get(self.url, query)
+            self.assertEqual((response.status_code, response.json()), (200, {'places': []}), query)
+
+    def test_a_browser_may_keep_the_answer(self):
+        self.assertEqual(self.client.get(self.url, {'q': 'al'}).headers['Cache-Control'], 'public, max-age=3600')
+
+    def test_it_only_reads(self):
+        response = self.client.post(self.url, {'q': 'al'}, content_type='application/json')
+        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.json()['error']['code'], 'method_not_allowed')
+
+
+class RouteLineTests(SimpleTestCase):
+    """The route line kept and sent is a thinned copy of the provider's."""
+
+    def test_it_never_has_more_points_than_the_limit_and_keeps_both_ends(self):
+        for length in (1, 2, 2999, 3000, 3001, 6000, 35146):
+            line = np.column_stack([np.arange(length, dtype=float), np.zeros(length)])
+            thinned = trip._thin(line)
+            self.assertEqual(len(thinned), min(length, trip.MAX_GEOMETRY_POINTS), length)
+            self.assertEqual((thinned[0], thinned[-1]), ([0.0, 0.0], [length - 1.0, 0.0]), length)
+
+    def test_a_short_line_is_kept_whole(self):
+        line = np.array([[-100.0, 40.0], [-99.5, 40.123456789], [-99.0, 40.0]])
+        self.assertEqual(trip._thin(line), [[-100.0, 40.0], [-99.5, 40.12346], [-99.0, 40.0]])
+
+
+class SameTripAtOnceTests(TripFixture):
+    """Several requests for the same new trip at the same moment: only one of them calls the routing provider."""
+
+    KEY = 'ready1:a-trip'
+
+    def setUp(self):
+        super().setUp()
+        get_index()  # loaded here, so the threads below never touch the database
+        self.start = Location('Alpha, KS', 'Alpha, KS', 40.0, -100.0)
+        self.finish = Location('Omega, OH', 'Omega, OH', 40.0, -80.0)
+
+    def fetch(self, _=None):
+        return trip._fetch_ready_route(self.KEY, PROVIDERS[conf.PROVIDER_OSRM], self.start, self.finish, 5.0)
+
+    def test_requests_arriving_together_share_one_routing_call(self):
+        answer = self.route_call.return_value
+
+        def slow_provider(*args):
+            time.sleep(0.3)
+            return answer
+
+        self.route_call.side_effect = slow_provider
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            results = list(pool.map(self.fetch, range(5)))
+        self.assertEqual(self.route_call.call_count, 1)
+        self.assertEqual(sorted(calls for _, calls in results), [0, 0, 0, 0, 1])
+        self.assertEqual({len(ready.candidates) for ready, _ in results}, {4})  # and all five got the route
+
+    def test_a_failed_call_does_not_hold_up_the_next_request(self):
+        self.route_call.side_effect = RoutingProviderError('The provider is down.')
+        with self.assertRaises(RoutingProviderError):
+            self.fetch()
+        self.route_call.side_effect = None
+        began = time.monotonic()
+        _, calls = self.fetch()
+        self.assertEqual(calls, 1)
+        self.assertLess(time.monotonic() - began, 0.5)  # nothing was left behind to wait for
+
+    def test_those_waiting_take_over_when_the_first_request_gives_up(self):
+        marker = self.KEY + ':fetching'
+        cache.add(marker, 1, 30)  # as if another request were fetching this route...
+        threading.Timer(0.25, cache.delete, [marker]).start()  # ...and then failed
+        _, calls = self.fetch()
+        self.assertEqual(calls, 1)
+        self.assertEqual(self.route_call.call_count, 1)
+
+    def test_only_the_one_that_takes_over_calls_the_provider(self):
+        ready, _ = self.fetch()  # a route to hand out below
+        cache.clear()
+        self.route_call.reset_mock()
+        cache.add(self.KEY + ':fetching', 1, 30)  # another request is fetching this route
+        # It fails, and a third request takes over before this one looks again. So this one's first
+        # wait ends with nothing and its second with the route. It must not call the provider itself:
+        # a provider that has just failed would otherwise be sent every waiting request at once.
+        with mock.patch.object(trip, '_wait_for', side_effect=[None, ready]) as waits:
+            self.assertEqual(self.fetch(), (ready, 0))
+        self.assertEqual(waits.call_count, 2)
+        self.route_call.assert_not_called()
+
+    @override_settings(ROUTING_TIMEOUT_SECONDS=0.3)
+    def test_nobody_waits_longer_than_a_routing_call_may_take(self):
+        cache.add(self.KEY + ':fetching', 1, 30)  # another request is fetching this route, and never finishes
+        with mock.patch.object(trip, 'WAIT_MARGIN_SECONDS', 0):
+            with self.assertRaisesMessage(RoutingProviderError, 'did not respond in time'):
+                self.fetch()
+        self.route_call.assert_not_called()

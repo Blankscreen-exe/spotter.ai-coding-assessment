@@ -67,6 +67,12 @@ button { font: inherit; cursor: pointer; }
 .pin.start { background: var(--green); }
 .flag { display: block; overflow: visible; color: #111827; filter: drop-shadow(0 1px 2px rgba(15, 23, 42, .45)); }
 .flag .foot { fill: var(--red); }
+/* Where the neighbouring plans would stop, shown while "Stops against cost" is open: a faint ring each. */
+.ghost { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 2px solid #94a3b8; box-shadow: 0 1px 3px rgba(15, 23, 42, .3); }
+/* Pointing at a row of that table picks out its plan: its stops stand, every other stop fades. */
+[data-station] { transition: opacity .12s; }
+body.comparing [data-station]:not(.in-plan) { opacity: .25; }
+body.comparing .ghost.in-plan { border-color: var(--blue); background: var(--blue-soft); }
 
 /* ---- summary numbers and the two counters: a dark band, so the answer stands apart from the map above
    and the details below ---- */
@@ -75,7 +81,7 @@ button { font: inherit; cursor: pointer; }
 #strip .money b { font-size: 24px; display: block; line-height: 1.1; }
 #strip .fact b { font-size: 17px; display: block; line-height: 1.2; }
 #strip .money span, #strip .fact span { color: var(--band-muted); font-size: 12px; }
-#strip .money b { color: var(--kpi-cost); }
+#strip .money b, #strip .allfuel b { color: var(--kpi-cost); }
 #strip .stops b { color: var(--kpi-stops); }
 #strip .miles b { color: var(--kpi-miles); }
 #strip .gallons b { color: var(--kpi-gallons); }
@@ -126,6 +132,13 @@ dl.facts dd { margin: 0; font-weight: 600; }
 /* fuel timeline */
 /* Sized from the open height directly, so it is right from the first frame of the slide. */
 #chart { width: 100%; height: calc(var(--panel) - 22px); display: block; }
+/* The GeoJSON tab: a copy button and a choice over the text itself, which fills what is left of the panel. */
+.output-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 6px; font-size: 13px; }
+.output-bar label { display: inline-flex; align-items: center; gap: 5px; }
+.output-bar .note { margin: 0; }
+.output textarea { display: block; width: 100%; height: calc(var(--panel) - 60px); padding: 8px 10px; resize: none; white-space: pre;
+                   border: 1px solid var(--line); border-radius: 6px; background: var(--soft); color: var(--ink);
+                   font: 12px/1.45 ui-monospace, Consolas, monospace; }
 #chart text { font-size: 11px; fill: var(--muted); }
 #chart .stopmark text.n { fill: var(--blue); font-weight: 700; }
 #chart .price { fill: var(--ink); }
@@ -143,6 +156,13 @@ dl.facts dd { margin: 0; font-weight: 600; }
 .dialog .sub { color: var(--muted); margin-bottom: 16px; }
 .dialog input[type=text] { width: 100%; font: inherit; font-size: 17px; color: var(--ink); padding: 11px 12px; margin-bottom: 14px;
                            border: 1px solid #9aa5b1; border-radius: 4px; }
+/* A place box, and under it the places offered while a name is being typed. The list lies over what is below. */
+.combo { position: relative; margin-bottom: 14px; }
+.dialog .combo input[type=text] { margin-bottom: 0; }
+.suggest { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; right: 0; margin: 0; padding: 4px; list-style: none;
+           background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 30px rgba(15, 23, 42, .18); }
+.suggest li { padding: 8px 10px; border-radius: 5px; cursor: pointer; }
+.suggest li:hover, .suggest li.on { background: var(--blue-soft); }
 .dialog .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .dialog .row .primary { margin-left: auto; }
 .examples { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
@@ -225,4 +245,5 @@ dl.facts dd { margin: 0; font-weight: 600; }
   body.settings-open { padding-right: 0; }
   body.dock-open #panel { height: auto; overflow-x: auto; }
   #chart { height: 226px; }
+  .output textarea { height: 226px; }
 }

@@ -4,31 +4,89 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
+from django.db.models import Case, Value, When
+
 from ..exceptions import LocationError
 from ..models import Place
 
 STATES = {
-    'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas', 'CA': 'California',
-    'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware', 'DC': 'District of Columbia',
-    'FL': 'Florida', 'GA': 'Georgia', 'HI': 'Hawaii', 'ID': 'Idaho', 'IL': 'Illinois',
-    'IN': 'Indiana', 'IA': 'Iowa', 'KS': 'Kansas', 'KY': 'Kentucky', 'LA': 'Louisiana',
-    'ME': 'Maine', 'MD': 'Maryland', 'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota',
-    'MS': 'Mississippi', 'MO': 'Missouri', 'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada',
-    'NH': 'New Hampshire', 'NJ': 'New Jersey', 'NM': 'New Mexico', 'NY': 'New York',
-    'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio', 'OK': 'Oklahoma', 'OR': 'Oregon',
-    'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina', 'SD': 'South Dakota',
-    'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah', 'VT': 'Vermont', 'VA': 'Virginia',
-    'WA': 'Washington', 'WV': 'West Virginia', 'WI': 'Wisconsin', 'WY': 'Wyoming',
+    'AL': 'Alabama',
+    'AK': 'Alaska',
+    'AZ': 'Arizona',
+    'AR': 'Arkansas',
+    'CA': 'California',
+    'CO': 'Colorado',
+    'CT': 'Connecticut',
+    'DE': 'Delaware',
+    'DC': 'District of Columbia',
+    'FL': 'Florida',
+    'GA': 'Georgia',
+    'HI': 'Hawaii',
+    'ID': 'Idaho',
+    'IL': 'Illinois',
+    'IN': 'Indiana',
+    'IA': 'Iowa',
+    'KS': 'Kansas',
+    'KY': 'Kentucky',
+    'LA': 'Louisiana',
+    'ME': 'Maine',
+    'MD': 'Maryland',
+    'MA': 'Massachusetts',
+    'MI': 'Michigan',
+    'MN': 'Minnesota',
+    'MS': 'Mississippi',
+    'MO': 'Missouri',
+    'MT': 'Montana',
+    'NE': 'Nebraska',
+    'NV': 'Nevada',
+    'NH': 'New Hampshire',
+    'NJ': 'New Jersey',
+    'NM': 'New Mexico',
+    'NY': 'New York',
+    'NC': 'North Carolina',
+    'ND': 'North Dakota',
+    'OH': 'Ohio',
+    'OK': 'Oklahoma',
+    'OR': 'Oregon',
+    'PA': 'Pennsylvania',
+    'RI': 'Rhode Island',
+    'SC': 'South Carolina',
+    'SD': 'South Dakota',
+    'TN': 'Tennessee',
+    'TX': 'Texas',
+    'UT': 'Utah',
+    'VT': 'Vermont',
+    'VA': 'Virginia',
+    'WA': 'Washington',
+    'WV': 'West Virginia',
+    'WI': 'Wisconsin',
+    'WY': 'Wyoming',
 }
 STATE_BY_NAME = {name.lower(): code for code, name in STATES.items()}
 
-# Rough box around the 50 states; catches swapped or foreign coordinates early.
-US_LAT = (18.0, 72.0)
-US_LON = (-180.0, -66.0)
+# Rough boxes around the lower 48 states, Alaska and Hawaii: (south, north, west, east).
+# They catch swapped, mistyped and far-off coordinates before a routing call is spent
+# on them. They are not the border: a point just across it (Toronto, Tijuana) is
+# inside a box and is routed like any other.
+US_BOXES = (
+    (24.4, 49.4, -125.0, -66.9),
+    (51.0, 71.5, -180.0, -129.9),
+    (18.9, 22.3, -160.3, -154.7),
+)
+
+# For the search box: how many places it is offered, and from how many letters.
+SUGGESTIONS = 8
+SUGGEST_FROM_LETTERS = 2
+# Ranked by land area alone, "chi" offers Chistochina before Chicago: Alaska's census
+# places cover thousands of square miles. Nor can the planner plan a drive to either of
+# these states (no road to one, and only Canadian fuel stops on the way to the other,
+# which the price data leaves out). So their places are listed after all the rest.
+LISTED_LAST = ('AK', 'HI')
 
 ABBREVIATIONS = {'st': 'saint', 'ste': 'sainte', 'ft': 'fort', 'mt': 'mount'}
 COORDINATES = re.compile(r'^\s*(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)\s*$')
-COUNTRY_SUFFIX = re.compile(r',?\s*(usa|u\.s\.a\.|united states(?: of america)?)\s*$', re.IGNORECASE)
+# A country after the place, set off by a comma or a space, so that "Azusa" is left whole.
+COUNTRY_SUFFIX = re.compile(r'(?:\s*,\s*|\s+)(usa|u\.s\.a\.|united states(?: of america)?)\s*$', re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -39,7 +97,7 @@ class Location:
     lon: float
 
 
-def normalize(name):
+def normalize(name: str) -> str:
     """Fold a place name to a matching key: "St. Louis" -> "saint louis"."""
     text = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode().lower()
     text = text.replace('&', ' and ')
@@ -50,7 +108,7 @@ def normalize(name):
     return re.sub(r'\bmc (?=[a-z])', 'mc', text)
 
 
-def key_variants(name):
+def key_variants(name: str) -> list[str]:
     """Keys to try in order: as given, then with/without a trailing "city"."""
     key = normalize(name)
     variants = [key]
@@ -61,7 +119,7 @@ def key_variants(name):
     return variants
 
 
-def find_place(name, state):
+def find_place(name: str, state: str) -> Place | None:
     for key in key_variants(name):
         place = Place.objects.filter(key=key, state=state).order_by('is_alias', '-land_sqmi').first()
         if place:
@@ -69,7 +127,16 @@ def find_place(name, state):
     return None
 
 
-def _split_state(text):
+def _places_named(name: str) -> list[Place]:
+    """The places with this name in any state, largest first. A handful at most."""
+    for key in key_variants(name):
+        matches = list(Place.objects.filter(key=key, is_alias=False).order_by('-land_sqmi')[:6])
+        if matches:
+            return matches
+    return []
+
+
+def _split_state(text: str) -> tuple[str, str | None]:
     """Split "Chicago, IL" / "Chicago IL" / "Chicago, Illinois" into (city, state code)."""
     if ',' in text:
         city, _, tail = text.rpartition(',')
@@ -88,33 +155,77 @@ def _split_state(text):
     return text, None
 
 
-def resolve_location(text):
+def resolve_location(text: str) -> Location:
     """Turn request text into a Location, or raise LocationError."""
     query = text.strip()
     match = COORDINATES.match(query)
     if match:
         lat, lon = float(match.group(1)), float(match.group(2))
-        if not (US_LAT[0] <= lat <= US_LAT[1] and US_LON[0] <= lon <= US_LON[1]):
+        if not any(south <= lat <= north and west <= lon <= east for south, north, west, east in US_BOXES):
             raise LocationError(f'"{query}" is not a latitude,longitude inside the USA.')
         return Location(query, f'{lat:.5f}, {lon:.5f}', lat, lon)
 
-    city, state = _split_state(COUNTRY_SUFFIX.sub('', query))
-    if state:
+    text = COUNTRY_SUFFIX.sub('', query)
+    city, state = _split_state(text)
+    matches = []
+    if state is None or ',' not in text:
+        # Without a comma, a name that ends in a state's name may be a town in its own right:
+        # "West New York" is in New Jersey, and is not "West" in New York.
+        matches = _places_named(text)
+    if state and not matches:
         place = find_place(city, state)
         if place is None:
-            raise LocationError(
-                f'Could not find "{city}" in {STATES[state]}. Check the spelling or pass "lat,lon".'
-            )
+            raise LocationError(f'Could not find "{city}" in {STATES[state]}. Check the spelling or pass "lat,lon".')
         return Location(query, str(place), place.lat, place.lon)
 
-    matches = []
-    for key in key_variants(city):
-        matches = list(Place.objects.filter(key=key, is_alias=False).order_by('-land_sqmi')[:6])
-        if matches:
-            break
     if len(matches) == 1:
         return Location(query, str(matches[0]), matches[0].lat, matches[0].lon)
     if matches:
         options = '; '.join(str(place) for place in matches[:5])
         raise LocationError(f'"{query}" matches several places ({options}). Add the state, e.g. "City, ST".')
     raise LocationError(f'Could not find "{query}". Use "City, ST" or "lat,lon".')
+
+
+def suggest_places(typed: str, limit: int = SUGGESTIONS) -> list[Place]:
+    """Places whose name starts with what has been typed so far, for a search box. The largest come first.
+
+    "chi" finds Chicago. A state narrows it, with a comma or without: "springfield, m"
+    and "springfield mo" both keep to the states that start that way. Fewer than two
+    letters find nothing.
+    """
+    name, _, rest = typed.partition(',')
+    key, states = normalize(name), _states_starting(rest.partition(',')[0])
+    found = _places_starting(key, states, limit)
+    if not found and states is None and ' ' in key:
+        # No comma, and no place is called that: the last word may be the start of a state.
+        key, _, last = key.rpartition(' ')
+        found = _places_starting(key, _states_starting(last), limit)
+    return found
+
+
+def _states_starting(text: str) -> list[str] | None:
+    """The states whose code or name starts with this. None if there is nothing to go by."""
+    start = text.strip().lower()
+    if not start:
+        return None
+    return [code for code, name in STATES.items() if code.lower().startswith(start) or name.lower().startswith(start)]
+
+
+def _places_starting(key: str, states: list[str] | None, limit: int) -> list[Place]:
+    if len(key) < SUGGEST_FROM_LETTERS:
+        return []
+    places = Place.objects.filter(key__startswith=key)
+    if states is not None:
+        places = places.filter(state__in=states)
+    listed_last = Case(When(state__in=LISTED_LAST, then=Value(1)), default=Value(0))
+    # Between a consolidated city and its short form ("Nashville-Davidson", "Nashville"), which
+    # share a position, the short form wins. Between two places of one name in one state, the larger.
+    found, seen = [], set()
+    for place in places.order_by(listed_last, '-land_sqmi', '-is_alias', 'name', 'state', 'pk')[: limit * 3]:
+        marks = {str(place), (place.lat, place.lon)}
+        if seen.isdisjoint(marks):
+            found.append(place)
+            if len(found) == limit:
+                break
+        seen |= marks
+    return found

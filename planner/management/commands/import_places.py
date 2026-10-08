@@ -47,7 +47,7 @@ class Command(BaseCommand):
         try:
             archive = zipfile.ZipFile(options['zip'])
         except (OSError, zipfile.BadZipFile) as exc:
-            raise CommandError(f'Cannot read {options["zip"]}: {exc}')
+            raise CommandError(f'Cannot read {options["zip"]}: {exc}') from exc
         with archive, archive.open(archive.namelist()[0]) as raw:
             reader = csv.DictReader(io.TextIOWrapper(raw, encoding='utf-8'), delimiter='|')
             reader.fieldnames = [name.strip() for name in reader.fieldnames]
@@ -57,12 +57,12 @@ class Command(BaseCommand):
                 if state not in STATES:
                     continue
                 name, descriptor = split_descriptor(row['NAME'].strip())
-                common = dict(
-                    state=state,
-                    lat=float(row['INTPTLAT']),
-                    lon=float(row['INTPTLONG']),
-                    land_sqmi=float(row['ALAND_SQMI']),
-                )
+                common = {
+                    'state': state,
+                    'lat': float(row['INTPTLAT']),
+                    'lon': float(row['INTPTLONG']),
+                    'land_sqmi': float(row['ALAND_SQMI']),
+                }
                 places.append(Place(name=name, key=normalize(name), **common))
                 short = LEGAL_PREFIX.sub('', name)
                 if short == name and CONSOLIDATED.search(descriptor):
@@ -79,7 +79,9 @@ class Command(BaseCommand):
         aliases = sum(place.is_alias for place in places)
         self.stdout.write(self.style.SUCCESS(f'Loaded {len(places) - aliases} places and {aliases} aliases.'))
         if unlinked:
-            self.stdout.write(self.style.WARNING(
-                f'{unlinked} stations pointed at the replaced places and are now unlocated. '
-                'Run "python manage.py import_stations" to link them again.'
-            ))
+            self.stdout.write(
+                self.style.WARNING(
+                    f'{unlinked} stations pointed at the replaced places and are now unlocated. '
+                    'Run "python manage.py import_stations" to link them again.'
+                )
+            )

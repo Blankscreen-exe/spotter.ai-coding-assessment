@@ -1,0 +1,12 @@
+# For working on the project, on top of what it needs to run:
+# the linter and formatter, test coverage, and the browser tests.
+#
+#   ruff check . && ruff format --check .
+#   python manage.py test
+#
+# The browser tests drive a Chrome or Edge that is already installed, so there
+# is no browser to download. Without Playwright they are skipped.
+-r requirements.txt
+coverage==7.16.2
+playwright==1.63.0
+ruff==0.16.10

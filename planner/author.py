@@ -21,7 +21,7 @@ AUTHOR = {
             'If something still gets in your way, I would LOVE to hear about it. The reasoning behind '
             'each choice is in the `decision log` below.',
         ],
-        'signoff': 'I\'m Hammad by the way.',
+        'signoff': "I'm Hammad by the way.",
     },
     'links': [
         {'kind': 'github', 'label': 'GitHub', 'url': 'https://github.com/Blankscreen-exe'},
@@ -32,7 +32,6 @@ AUTHOR = {
         'label': 'Source code for this project',
         'url': 'https://github.com/Blankscreen-exe/spotter.ai-coding-assessment',
     },
-    # Works once the work is merged to main and pushed.
     'decisions': {
         'label': 'Decision log: why it is built this way',
         'url': 'https://github.com/Blankscreen-exe/spotter.ai-coding-assessment/blob/main/docs/DECISIONS.md',
@@ -44,6 +43,7 @@ LINK_KINDS = {'github', 'linkedin', 'website', 'blog', 'x', 'email'}
 
 def author_for_page():
     """AUTHOR, with each link given the short text shown under its label (the address without the https)."""
+
     def short(url):
         return url.removeprefix('mailto:').removeprefix('https://').removeprefix('www.').rstrip('/')
 

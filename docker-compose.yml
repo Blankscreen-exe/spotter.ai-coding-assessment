@@ -1,7 +1,7 @@
 # Local stack: the API on PostgreSQL with Redis as the route cache.
 #
 #   docker compose up --build
-#   http://localhost:8000/map/
+#   http://127.0.0.1:8000/map/
 #
 # The credentials below are for this local stack only.
 services:
@@ -24,6 +24,10 @@ services:
 
   cache:
     image: redis:7-alpine
+    # A cache, so it gets a ceiling and gives up its least recently used entries
+    # when it reaches it. Without one it would grow until the host ran out of
+    # memory: a cross-country route is about 110 KB and lives for an hour.
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 3s
@@ -45,11 +49,13 @@ services:
       # and timing for each request. DJANGO_DEBUG_TOOLBAR=false docker compose up
       # runs the stack without it.
       DJANGO_DEBUG_TOOLBAR: ${DJANGO_DEBUG_TOOLBAR:-true}
-      # Login for http://localhost:8000/admin/ on this local stack.
+      # Login for http://127.0.0.1:8000/admin/ on this local stack.
       DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-admin}
       DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:-fuelroute-demo}
+    # Published to this machine only. The stack carries a published admin password
+    # and the debug toolbar, so nothing else on the network should reach it.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz/', timeout=3)"]
       interval: 10s

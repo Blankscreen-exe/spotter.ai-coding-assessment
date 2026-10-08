@@ -21,6 +21,7 @@ reaches mile 0 with exactly the starting fuel left. The destination is a
 station priced below everything, so the vehicle always arrives empty.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
@@ -31,6 +32,8 @@ EPSILON = 1e-9
 
 @dataclass(frozen=True)
 class Candidate:
+    """Somewhere fuel can be bought. ref is the caller's own object, handed back untouched."""
+
     mile: float
     price: float
     ref: Any = None
@@ -43,12 +46,17 @@ class Purchase:
     arrival_range_miles: float
 
 
-def plan_fuel_stops(candidates, trip_miles, range_miles, mpg, start_range_miles, stop_cost=0.0):
+def plan_fuel_stops(
+    candidates: Iterable[Candidate],
+    trip_miles: float,
+    range_miles: float,
+    mpg: float,
+    start_range_miles: float,
+    stop_cost: float = 0.0,
+) -> list[Purchase]:
     """Return the Purchases, in route order, that minimise the objective."""
     start_range_miles = min(start_range_miles, range_miles)
-    stations = sorted(
-        (c for c in candidates if 0 <= c.mile <= trip_miles), key=lambda c: (c.mile, c.price)
-    )
+    stations = sorted((c for c in candidates if 0 <= c.mile <= trip_miles), key=lambda c: (c.mile, c.price))
     if trip_miles <= start_range_miles + EPSILON:
         return []
     _check_reachable(stations, trip_miles, range_miles, start_range_miles)
@@ -103,7 +111,7 @@ def _cheapest_fuel(stations, trip_miles, range_miles, mpg, start_range_miles):
             target = cheapest
             bought = range_miles - fuel
 
-        if 0 < here and bought > EPSILON:
+        if here > 0 and bought > EPSILON:
             purchases.append(Purchase(stations[here - 1], bought / mpg, fuel))
         fuel += bought - (miles[target] - miles[here])
         here = target
@@ -126,7 +134,8 @@ def _cheapest_with_stop_cost(stations, trip_miles, range_miles, mpg, start_range
     fill-or-arrive-empty rule the vehicle can only arrive at a stop empty or
     with (range - distance from the previous stop), so there are few states.
 
-    Two observations keep it linear in (stations x stations within one tank):
+    Two observations keep the work at a station to one pass over the stations
+    within a tank of it, after sorting the ways of arriving there:
     - Topping up at a station costs its own price, so arriving with less fuel
       for proportionally less money is never worse. Arrivals are therefore
       reduced to a frontier ordered by fuel on which "value" (cost minus the
@@ -171,19 +180,23 @@ def _cheapest_with_stop_cost(stations, trip_miles, range_miles, mpg, start_range
                     pick += 1
                 if frontier[pick].fuel >= distance - EPSILON:
                     continue  # already carrying enough to pass this station by
-                arrivals[ahead].append(_Arrival(
-                    fuel=0.0,
-                    cost=values[pick] + distance * per_mile + stop_cost,
-                    previous=(here, pick),
-                    gallons=(distance - frontier[pick].fuel) / mpg,
-                ))
+                arrivals[ahead].append(
+                    _Arrival(
+                        fuel=0.0,
+                        cost=values[pick] + distance * per_mile + stop_cost,
+                        previous=(here, pick),
+                        gallons=(distance - frontier[pick].fuel) / mpg,
+                    )
+                )
             elif frontier[last].fuel < range_miles - EPSILON:
-                arrivals[ahead].append(_Arrival(
-                    fuel=range_miles - distance,
-                    cost=values[last] + range_miles * per_mile + stop_cost,
-                    previous=(here, last),
-                    gallons=(range_miles - frontier[last].fuel) / mpg,
-                ))
+                arrivals[ahead].append(
+                    _Arrival(
+                        fuel=range_miles - distance,
+                        cost=values[last] + range_miles * per_mile + stop_cost,
+                        previous=(here, last),
+                        gallons=(range_miles - frontier[last].fuel) / mpg,
+                    )
+                )
 
     if not arrivals[count]:
         raise NoFeasiblePlan('No combination of fuel stops reaches the destination.')

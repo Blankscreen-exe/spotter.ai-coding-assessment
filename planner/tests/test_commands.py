@@ -13,6 +13,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 
 from planner import conf
 from planner.models import FuelStation, Place, ProviderCredential, Setting
+from planner.services import server_settings
 
 GAZETTEER = """USPS|GEOID|GEOIDFQ|ANSICODE|NAME|LSAD|FUNCSTAT|ALAND|AWATER|ALAND_SQMI|AWATER_SQMI|INTPTLAT|INTPTLONG
 AL|0100124|x|1|Abbeville city|25|A|1|1|15.543|0.042|31.565164|-85.259165
@@ -40,8 +41,13 @@ class ImportPlacesTests(TestCase):
         places = {(p.name, p.state): p for p in Place.objects.filter(is_alias=False)}
         self.assertEqual(
             set(places),
-            {('Abbeville', 'AL'), ('Cañon City', 'CO'), ('Nashville-Davidson', 'TN'),
-             ('Town of Pecos', 'TX'), ('Lake of the Woods', 'VA')},  # descriptors stripped, Puerto Rico skipped
+            {
+                ('Abbeville', 'AL'),
+                ('Cañon City', 'CO'),
+                ('Nashville-Davidson', 'TN'),
+                ('Town of Pecos', 'TX'),
+                ('Lake of the Woods', 'VA'),
+            },  # descriptors stripped, Puerto Rico skipped
         )
         self.assertEqual(places[('Cañon City', 'CO')].key, 'canon city')
         self.assertEqual((places[('Abbeville', 'AL')].lat, places[('Abbeville', 'AL')].lon), (31.565164, -85.259165))
@@ -62,7 +68,12 @@ class ImportPlacesTests(TestCase):
     def test_rerun_warns_that_stations_lost_their_place(self):
         self.run_import()
         FuelStation.objects.create(
-            opis_id=1, name='A', address='x', city='Abbeville', state='AL', price='3.00',
+            opis_id=1,
+            name='A',
+            address='x',
+            city='Abbeville',
+            state='AL',
+            price='3.00',
             place=Place.objects.get(name='Abbeville'),
         )
         output = self.run_import()
@@ -80,6 +91,10 @@ class ImportPlacesTests(TestCase):
 
 @override_settings(CREDENTIALS_ENCRYPTION_KEYS=[Fernet.generate_key().decode()])
 class SetProviderKeyTests(TestCase):
+    def setUp(self):
+        # Storing a key is written to the server's log. Held here, so it can be read and stays out of the test output.
+        self.audit = self.enterContext(mock.patch.object(server_settings.logger, 'info'))
+
     def run_command(self, *args):
         output = StringIO()
         call_command('set_provider_key', conf.PROVIDER_ORS, *args, stdout=output)
@@ -108,7 +123,17 @@ class SetProviderKeyTests(TestCase):
     def test_activate_makes_the_provider_the_default(self):
         with mock.patch('getpass.getpass', return_value='typed-key'):
             self.run_command('--activate')
-        self.assertEqual(conf.load_settings()[conf.ROUTING_PROVIDER], conf.PROVIDER_ORS)
+        self.assertEqual(server_settings.load()[conf.ROUTING_PROVIDER], conf.PROVIDER_ORS)
+
+    def test_it_is_logged_as_the_command_and_never_with_the_key(self):
+        with mock.patch('getpass.getpass', return_value='typed-key'):
+            self.run_command('--activate')
+        message = self.audit.call_args.args[0] % self.audit.call_args.args[1:]
+        self.assertEqual(
+            message,
+            'Settings changed by the set_provider_key command: '
+            'routing.provider=openrouteservice, openrouteservice API key',
+        )
 
     def test_empty_key_is_refused(self):
         with mock.patch.dict('os.environ', {}, clear=False):

@@ -8,8 +8,9 @@ from django.db import connection
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
-from planner import conf, views
+from planner import conf
 from planner.models import ProviderCredential, Setting
+from planner.services import server_settings
 
 FAST_HASHER = ['django.contrib.auth.hashers.MD5PasswordHasher']
 SETTINGS_URL, SESSION_URL = reverse('settings'), reverse('session')
@@ -31,7 +32,7 @@ class SettingsEditingTests(TestCase):
 
     def setUp(self):
         cache.clear()
-        self.audit = self.enterContext(mock.patch.object(views.logger, 'info'))
+        self.audit = self.enterContext(mock.patch.object(server_settings.logger, 'info'))
 
     def value(self, key):
         return Setting.objects.get(key=key).value
@@ -81,10 +82,12 @@ class SettingsEditingTests(TestCase):
         self.client.force_login(self.admin)
         response = patch(self.client, {'settings': {conf.STOP_COST: 8, conf.MPG: '12.5', conf.RANGE_MILES: 400}})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual((self.value(conf.STOP_COST), self.value(conf.MPG), self.value(conf.RANGE_MILES)), ('8', '12.5', '400'))
+        self.assertEqual(
+            (self.value(conf.STOP_COST), self.value(conf.MPG), self.value(conf.RANGE_MILES)), ('8', '12.5', '400')
+        )
         returned = {setting['key']: setting['value'] for setting in response.json()['settings']}
         self.assertEqual((returned[conf.STOP_COST], returned[conf.MPG]), (8.0, 12.5))
-        self.assertEqual(conf.load_settings()[conf.RANGE_MILES], 400.0)
+        self.assertEqual(server_settings.load()[conf.RANGE_MILES], 400.0)
 
     def test_a_setting_whose_row_is_missing_is_created(self):
         Setting.objects.filter(key=conf.MPG).delete()
@@ -94,7 +97,9 @@ class SettingsEditingTests(TestCase):
 
     def test_one_bad_value_saves_nothing(self):
         self.client.force_login(self.admin)
-        response = patch(self.client, {'settings': {conf.STOP_COST: 8, conf.MPG: 0, conf.RANGE_MILES: 'far', 'made.up': 1}})
+        response = patch(
+            self.client, {'settings': {conf.STOP_COST: 8, conf.MPG: 0, conf.RANGE_MILES: 'far', 'made.up': 1}}
+        )
         self.assertEqual(response.status_code, 400)
         fields = response.json()['error']['fields']
         self.assertEqual(fields[conf.MPG], ['Fuel economy must be greater than zero.'])
@@ -104,8 +109,23 @@ class SettingsEditingTests(TestCase):
 
     def test_values_that_would_break_planning_are_refused(self):
         self.client.force_login(self.admin)
-        for key, bad in [(conf.STOP_COST, -1), (conf.RANGE_MILES, 'inf'), (conf.MPG, 'nan'), (conf.ROUTING_PROVIDER, 'google')]:
+        for key, bad in [
+            (conf.STOP_COST, -1),
+            (conf.RANGE_MILES, 'inf'),
+            (conf.MPG, 'nan'),
+            (conf.ROUTING_PROVIDER, 'google'),
+        ]:
             self.assertEqual(patch(self.client, {'settings': {key: bad}}).status_code, 400, f'{key}={bad}')
+
+    def test_corridor_has_a_ceiling(self):
+        # Past it, choosing the stops slows down sharply, and a station is hardly on the route.
+        self.client.force_login(self.admin)
+        response = patch(self.client, {'settings': {conf.CORRIDOR_MILES: 26}})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()['error']['fields'][conf.CORRIDOR_MILES], ['Station corridor must be 25 or less.']
+        )
+        self.assertEqual(patch(self.client, {'settings': {conf.CORRIDOR_MILES: 25}}).status_code, 200)
 
     def test_empty_change_is_refused(self):
         self.client.force_login(self.admin)
@@ -123,13 +143,19 @@ class SettingsEditingTests(TestCase):
 
     def test_key_and_switch_in_one_request(self):
         self.client.force_login(self.admin)
-        response = patch(self.client, {
-            'settings': {conf.ROUTING_PROVIDER: conf.PROVIDER_ORS}, 'provider_keys': {conf.PROVIDER_ORS: '  the-secret-key '},
-        })
+        response = patch(
+            self.client,
+            {
+                'settings': {conf.ROUTING_PROVIDER: conf.PROVIDER_ORS},
+                'provider_keys': {conf.PROVIDER_ORS: '  the-secret-key '},
+            },
+        )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(ProviderCredential.objects.get().api_key, 'the-secret-key')
         providers = {provider['name']: provider for provider in response.json()['providers']}
-        self.assertEqual((providers['openrouteservice']['active'], providers['openrouteservice']['has_key']), (True, True))
+        self.assertEqual(
+            (providers['openrouteservice']['active'], providers['openrouteservice']['has_key']), (True, True)
+        )
         # Encrypted in the table, and never sent back.
         with connection.cursor() as cursor:
             cursor.execute('SELECT api_key FROM planner_providercredential')
@@ -150,7 +176,7 @@ class SettingsEditingTests(TestCase):
 
     def test_storing_a_key_without_an_encryption_key_fails_cleanly(self):
         self.client.force_login(self.admin)
-        with override_settings(CREDENTIALS_ENCRYPTION_KEYS=[]):
+        with override_settings(CREDENTIALS_ENCRYPTION_KEYS=[]), self.assertLogs('django.request', level='ERROR'):
             response = patch(self.client, {'settings': {conf.MPG: 12}, 'provider_keys': {conf.PROVIDER_ORS: 'a-key'}})
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()['error']['code'], 'encryption_not_configured')
@@ -165,7 +191,9 @@ class SettingsEditingTests(TestCase):
         self.assertEqual(self.value(conf.STOP_COST), '5')
         browser.get(reverse('route-map'))  # the page hands out the token
         token = browser.cookies['csrftoken'].value
-        self.assertEqual(patch(browser, {'settings': {conf.STOP_COST: 0}}, headers={'X-CSRFToken': token}).status_code, 200)
+        self.assertEqual(
+            patch(browser, {'settings': {conf.STOP_COST: 0}}, headers={'X-CSRFToken': token}).status_code, 200
+        )
         self.assertEqual(self.value(conf.STOP_COST), '0')
 
 
@@ -177,7 +205,7 @@ class SessionTests(TestCase):
 
     def setUp(self):
         cache.clear()
-        self.enterContext(mock.patch.object(views.logger, 'info'))
+        self.enterContext(mock.patch.object(server_settings.logger, 'info'))  # the log of settings changes
 
     def sign_in(self, password='admin-pass', client=None, **extra):
         return (client or self.client).post(
@@ -188,7 +216,9 @@ class SessionTests(TestCase):
         self.assertFalse(self.client.get(SESSION_URL).json()['signed_in'])
         response = self.sign_in()
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {'signed_in': True, 'username': 'admin', 'can_edit': True, 'can_set_keys': True})
+        self.assertEqual(
+            response.json(), {'signed_in': True, 'username': 'admin', 'can_edit': True, 'can_set_keys': True}
+        )
         self.assertTrue(self.client.get(SESSION_URL).json()['signed_in'])
         self.assertEqual(patch(self.client, {'settings': {conf.MPG: 11}}).status_code, 200)
 
@@ -221,6 +251,19 @@ class SessionTests(TestCase):
         statuses = [self.sign_in(password='guess').status_code for _ in range(5)]
         self.assertEqual(statuses, [400, 400, 400, 429, 429])
         self.assertEqual(self.sign_in().status_code, 429)  # even the right password has to wait
+
+    @override_settings(LOGIN_RATE_LIMIT='3/min')
+    def test_signing_in_first_does_not_lift_the_limit(self):
+        self.sign_in()
+        statuses = [self.sign_in(password='guess').status_code for _ in range(4)]
+        self.assertEqual(statuses, [400, 400, 429, 429])
+
+    @override_settings(LOGIN_RATE_LIMIT='3/min')
+    def test_a_forged_forwarding_header_does_not_lift_it_either(self):
+        statuses = [
+            self.sign_in(password='guess', HTTP_X_FORWARDED_FOR=f'10.9.9.{number}').status_code for number in range(5)
+        ]
+        self.assertEqual(statuses, [400, 400, 400, 429, 429])
 
     def test_the_route_endpoint_still_needs_no_token(self):
         browser = Client(enforce_csrf_checks=True)

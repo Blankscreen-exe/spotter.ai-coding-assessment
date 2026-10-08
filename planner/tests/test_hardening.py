@@ -13,9 +13,32 @@ from django.urls import reverse
 from config.toolbar import show_toolbar
 from planner import views
 from planner.models import FuelStation, Place
+from planner.services.places import Location
 from planner.services.stations import reset_index
+from planner.services.trip import Trip, TripPlan
 
 TRIP = {'start': 'Alpha, KS', 'finish': 'Omega, OH'}
+# A planned trip for the tests that are about something other than planning.
+A_TRIP = Trip(
+    start=Location('Alpha, KS', 'Alpha, KS', 40.0, -100.0),
+    finish=Location('Omega, OH', 'Omega, OH', 40.0, -80.0),
+    plan=TripPlan(
+        provider='osrm',
+        distance_miles=1059.0,
+        duration_seconds=57600.0,
+        geometry=[[-100.0, 40.0], [-80.0, 40.0]],
+        range_miles=500.0,
+        mpg=10.0,
+        initial_range_miles=500.0,
+        stop_cost=5.0,
+        corridor_miles=5.0,
+        stops=(),
+        candidates=(),
+    ),
+    routing_calls=0,
+    served_from='plan cache',
+    elapsed_ms=0.1,
+)
 
 
 class ErrorShapeTests(TestCase):
@@ -43,7 +66,7 @@ class ErrorShapeTests(TestCase):
 
     def test_unexpected_failure_is_json_and_does_not_leak_details(self):
         with mock.patch.object(views, 'plan_trip', side_effect=RuntimeError('secret internals')):
-            with self.assertLogs('planner.handlers', level='ERROR'):
+            with self.assertLogs('planner.handlers', level='ERROR'), self.assertLogs('django.request', level='ERROR'):
                 response = self.client.post(self.url, TRIP, content_type='application/json')
         self.assertEqual(response.status_code, 500)
         self.assertEqual(response.json(), {'error': {'code': 'internal_error', 'message': 'Unexpected server error.'}})
@@ -55,7 +78,7 @@ class RateLimitTests(TestCase):
 
     def setUp(self):
         cache.clear()
-        patcher = mock.patch.object(views, 'plan_trip', return_value={})
+        patcher = mock.patch.object(views, 'plan_trip', return_value=A_TRIP)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -73,6 +96,21 @@ class RateLimitTests(TestCase):
             self.request(REMOTE_ADDR='10.0.0.1')
         self.assertEqual(self.request(REMOTE_ADDR='10.0.0.1').status_code, 429)
         self.assertEqual(self.request(REMOTE_ADDR='10.0.0.2').status_code, 200)
+
+    def test_a_client_cannot_name_its_own_address(self):
+        # X-Forwarded-For is whatever the sender types. A new value each time must not be a new allowance.
+        statuses = [self.request(HTTP_X_FORWARDED_FOR=f'10.9.9.{number}').status_code for number in range(4)]
+        self.assertEqual(statuses, [200, 200, 429, 429])
+
+    def test_behind_a_proxy_the_address_it_reports_is_the_client(self):
+        behind_one_proxy = {**settings.REST_FRAMEWORK, 'NUM_PROXIES': 1}
+        with override_settings(REST_FRAMEWORK=behind_one_proxy):
+            for _ in range(2):
+                self.request(HTTP_X_FORWARDED_FOR='203.0.113.5')
+            self.assertEqual(self.request(HTTP_X_FORWARDED_FOR='203.0.113.5').status_code, 429)
+            self.assertEqual(self.request(HTTP_X_FORWARDED_FOR='203.0.113.6').status_code, 200)
+            # Only the proxy's own entry, the last one, is believed: what the client put before it is not.
+            self.assertEqual(self.request(HTTP_X_FORWARDED_FOR='1.2.3.4, 203.0.113.5').status_code, 429)
 
     @override_settings(API_RATE_LIMIT='')
     def test_empty_setting_disables_the_limit(self):
@@ -93,25 +131,31 @@ class HealthTests(TestCase):
 
     def test_ok_when_stations_are_loaded(self):
         place = Place.objects.create(name='Alpha', state='KS', key='alpha', lat=40.0, lon=-100.0)
-        FuelStation.objects.create(opis_id=1, name='A', address='x', city='Alpha', state='KS', price='3.00', place=place)
+        FuelStation.objects.create(
+            opis_id=1, name='A', address='x', city='Alpha', state='KS', price='3.00', place=place
+        )
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {'status': 'ok', 'stations': 1})
 
-    def test_unavailable_before_the_data_is_loaded(self):
-        response = self.client.get(self.url)
+    def unavailable(self):
+        # Not being able to serve is written to the server's log as well as answered.
+        with self.assertLogs('django.request', level='ERROR') as logs:
+            response = self.client.get(self.url)
         self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.json()['reason'], 'no station data loaded')
+        self.assertIn('Service Unavailable: /healthz/', logs.output[0])
+        return response
+
+    def test_unavailable_before_the_data_is_loaded(self):
+        self.assertEqual(self.unavailable().json()['reason'], 'no station data loaded')
 
     def test_unavailable_when_the_database_is_down(self):
         with mock.patch.object(views, 'get_index', side_effect=DatabaseError):
-            response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.json()['reason'], 'database unreachable')
+            self.assertEqual(self.unavailable().json()['reason'], 'database unreachable')
 
     @override_settings(SECURE_SSL_REDIRECT=True, SECURE_REDIRECT_EXEMPT=[r'^healthz/$'])
     def test_not_redirected_to_https(self):
-        self.assertEqual(self.client.get(self.url).status_code, 503)
+        self.unavailable()
         self.assertEqual(self.client.get(reverse('route-map')).status_code, 301)
 
 
@@ -128,9 +172,18 @@ class DebugToolbarTests(SimpleTestCase):
             '"config": getattr(settings, "DEBUG_TOOLBAR_CONFIG", {}), "caches": sorted(settings.CACHES)}))'
         )
         return subprocess.run(
-            [sys.executable, '-c', program], capture_output=True, text=True, cwd=settings.BASE_DIR,
-            env={**os.environ, 'DJANGO_SETTINGS_MODULE': 'config.settings',
-                 'DJANGO_DEBUG_TOOLBAR': '', 'DJANGO_SECURE': '', 'REDIS_URL': '', **environment},
+            [sys.executable, '-c', program],
+            capture_output=True,
+            text=True,
+            cwd=settings.BASE_DIR,
+            env={
+                **os.environ,
+                'DJANGO_SETTINGS_MODULE': 'config.settings',
+                'DJANGO_DEBUG_TOOLBAR': '',
+                'DJANGO_SECURE': '',
+                'REDIS_URL': '',
+                **environment,
+            },
         )
 
     def test_off_unless_asked_for(self):
