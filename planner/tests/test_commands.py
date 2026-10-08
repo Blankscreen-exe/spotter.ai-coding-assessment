@@ -91,6 +91,10 @@ class ImportPlacesTests(TestCase):
 
 @override_settings(CREDENTIALS_ENCRYPTION_KEYS=[Fernet.generate_key().decode()])
 class SetProviderKeyTests(TestCase):
+    def setUp(self):
+        # Storing a key is written to the server's log. Held here, so it can be read and stays out of the test output.
+        self.audit = self.enterContext(mock.patch.object(server_settings.logger, 'info'))
+
     def run_command(self, *args):
         output = StringIO()
         call_command('set_provider_key', conf.PROVIDER_ORS, *args, stdout=output)
@@ -120,6 +124,16 @@ class SetProviderKeyTests(TestCase):
         with mock.patch('getpass.getpass', return_value='typed-key'):
             self.run_command('--activate')
         self.assertEqual(server_settings.load()[conf.ROUTING_PROVIDER], conf.PROVIDER_ORS)
+
+    def test_it_is_logged_as_the_command_and_never_with_the_key(self):
+        with mock.patch('getpass.getpass', return_value='typed-key'):
+            self.run_command('--activate')
+        message = self.audit.call_args.args[0] % self.audit.call_args.args[1:]
+        self.assertEqual(
+            message,
+            'Settings changed by the set_provider_key command: '
+            'routing.provider=openrouteservice, openrouteservice API key',
+        )
 
     def test_empty_key_is_refused(self):
         with mock.patch.dict('os.environ', {}, clear=False):

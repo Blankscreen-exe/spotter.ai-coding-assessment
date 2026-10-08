@@ -205,6 +205,7 @@ class SessionTests(TestCase):
 
     def setUp(self):
         cache.clear()
+        self.enterContext(mock.patch.object(server_settings.logger, 'info'))  # the log of settings changes
 
     def sign_in(self, password='admin-pass', client=None, **extra):
         return (client or self.client).post(
