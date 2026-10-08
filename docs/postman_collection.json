@@ -1,11 +1,11 @@
 {
   "info": {
     "name": "Fuel route planner",
-    "description": "Requests for the fuel route planner API. Set the base_url collection variable if the server is not on localhost:8000.",
+    "description": "Requests for the fuel route planner API. Set the base_url collection variable if the server is not on 127.0.0.1:8000.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    {"key": "base_url", "value": "http://localhost:8000"}
+    {"key": "base_url", "value": "http://127.0.0.1:8000"}
   ],
   "item": [
     {
@@ -132,6 +132,14 @@
       "request": {
         "method": "GET",
         "url": "{{base_url}}/api/v1/settings/"
+      }
+    },
+    {
+      "name": "Places starting with (for a search box)",
+      "request": {
+        "method": "GET",
+        "description": "What the page's two location boxes ask as a name is typed. A state narrows it: q=springfield, m",
+        "url": "{{base_url}}/api/v1/places/?q=chi"
       }
     },
     {

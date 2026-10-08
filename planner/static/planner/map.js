@@ -640,7 +640,89 @@
 
   // ---------- onboarding ----------
 
+  // Each of the two boxes offers places while a name is being typed, from GET /api/v1/places/?q=...
+  // Nothing is picked on the visitor's behalf: Enter sends what is typed, unless an arrow key or a
+  // click has chosen a row. So a "lat,lon", or a town the list does not offer, still goes through.
+  // Returns the function that puts the list away.
+  function offerPlaces(input, list) {
+    const known = new Map();  // what was typed -> the names found, so going back over the same letters asks nothing
+    let names = [], picked = -1, ticket = 0, timer = null;
+
+    function draw() {
+      list.replaceChildren(...names.map((name, index) => {
+        const row = document.createElement('li');
+        row.id = `${list.id}-${index}`;
+        row.setAttribute('role', 'option');
+        row.setAttribute('aria-selected', index === picked);
+        row.classList.toggle('on', index === picked);
+        row.textContent = name;  // it comes from the place table, which is still data: never markup
+        return row;
+      }));
+      list.hidden = !names.length;
+      input.setAttribute('aria-expanded', names.length > 0);
+      if (picked >= 0) input.setAttribute('aria-activedescendant', `${list.id}-${picked}`);
+      else input.removeAttribute('aria-activedescendant');
+    }
+
+    function close() {
+      ticket++;  // an answer still on its way is no longer wanted
+      clearTimeout(timer);
+      names = [];
+      picked = -1;
+      draw();
+    }
+
+    function choose(name) {
+      input.value = name;
+      close();
+    }
+
+    async function look() {
+      const typed = input.value.trim().toLowerCase();
+      if (typed.length < 2) { close(); return; }
+      const mine = ++ticket;
+      if (!known.has(typed)) {
+        try {
+          const response = await fetch(`${config.placesUrl}?q=${encodeURIComponent(typed)}`);
+          if (response.ok) known.set(typed, (await response.json()).places.map((place) => place.name));
+        } catch (error) { /* no list this time; the box still works as a plain one */ }
+      }
+      if (mine !== ticket || document.activeElement !== input) return;  // typed on since, or left the box
+      names = known.get(typed) || [];
+      picked = -1;
+      draw();
+    }
+
+    input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(look, 150); });
+    input.addEventListener('keydown', (event) => {
+      if (list.hidden) return;
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        // Round and round, by way of "nothing picked": past the last row is what was typed.
+        const step = event.key === 'ArrowDown' ? 1 : -1, stops = names.length + 1;
+        picked = (picked + 1 + step + stops) % stops - 1;
+        draw();
+      } else if (event.key === 'Enter' && picked >= 0) {
+        event.preventDefault();  // this Enter chooses the row; the next one moves on
+        choose(names[picked]);
+      } else if (event.key === 'Escape') {
+        event.stopPropagation();
+        close();
+      }
+    });
+    input.addEventListener('blur', close);
+    // mousedown, not click: a click first takes the focus from the box, and losing it puts the list away.
+    list.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+      const row = event.target.closest('li');
+      if (row) choose(row.textContent);
+    });
+    return close;
+  }
+  const placeLists = [offerPlaces($('start'), $('startPlaces')), offerPlaces($('finish'), $('finishPlaces'))];
+
   function show(step) {
+    placeLists.forEach((close) => close());
     for (const id of ['askStart', 'askFinish', 'working']) $(id).hidden = id !== step;
     $('dot2').classList.toggle('on', step !== 'askStart');
     if (step === 'askStart') $('start').focus();

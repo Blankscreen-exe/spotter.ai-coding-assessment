@@ -155,6 +155,46 @@ class MapPageTests(PageTestCase):
         expect(self.page.locator('.tab.on')).to_have_text('Fuel plan')
         expect(self.page.locator('#panel tr.stoprow')).to_have_count(2)
 
+    # ---------- the two location boxes ----------
+
+    def test_typing_in_a_location_box_offers_places_to_click_or_to_pick_with_the_keys(self):
+        page = self.page
+        page.goto(f'{self.live_server_url}/map/')
+        page.locator('#start').press_sequentially('al')
+        expect(page.locator('#startPlaces li')).to_have_text(['Alpha, KS'])
+        page.locator('#startPlaces li').first.click()
+        expect(page.locator('#start')).to_have_value('Alpha, KS')
+        expect(page.locator('#startPlaces')).to_be_hidden()
+        expect(page.locator('#start')).to_be_focused()  # still in the box, so Enter carries straight on
+        page.press('#start', 'Enter')
+
+        page.locator('#finish').press_sequentially('om')
+        expect(page.locator('#finishPlaces li')).to_have_text(['Omega, OH'])
+        page.press('#finish', 'ArrowDown')
+        expect(page.locator('#finishPlaces li.on')).to_have_text('Omega, OH')
+        page.press('#finish', 'Enter')  # this Enter takes the row...
+        expect(page.locator('#finish')).to_have_value('Omega, OH')
+        expect(page.locator('#askFinish')).to_be_visible()  # ...and the question is still there
+        page.press('#finish', 'Enter')  # the next one plans the trip
+        expect(page.locator('#tripName')).to_contain_text('Alpha, KS')
+        expect(page.locator('#tripName')).to_contain_text('Omega, OH')
+
+    def test_the_list_never_picks_for_the_visitor_and_escape_puts_it_away(self):
+        page = self.page
+        page.goto(f'{self.live_server_url}/map/')
+        page.locator('#start').press_sequentially('do')
+        expect(page.locator('#startPlaces li')).to_have_text(['Dover, KS'])
+        page.press('#start', 'Escape')
+        expect(page.locator('#startPlaces')).to_be_hidden()
+        expect(page.locator('#onboarding')).to_be_visible()
+        expect(page.locator('#start')).to_have_value('do')
+
+        page.locator('#start').press_sequentially('v')
+        expect(page.locator('#startPlaces li')).to_have_text(['Dover, KS'])
+        page.press('#start', 'Enter')  # no row was picked, so what was typed goes on as it stands
+        expect(page.locator('#fromName')).to_have_text('dov')
+        expect(page.locator('#startPlaces')).to_be_hidden()
+
     def test_the_band_gives_the_fuel_bought_and_the_cost_of_all_the_fuel_used(self):
         self.open_trip()
         bought = float(self.page.locator('#sumCost').inner_text().lstrip('$'))
@@ -324,6 +364,14 @@ class HostileTextTests(PageTestCase):
         self.open_trip("start=O'Fallon, KS&finish=Omega, OH", tab='#api')
         # A shell ends a single-quoted string at the next single quote, so the one in the name is written '\''.
         expect(self.page.locator('#panel pre').first).to_contain_text(r"""-d '{"start":"O'\''Fallon, KS",""")
+
+    def test_a_place_name_in_the_list_of_places_is_shown_as_text(self):
+        name = '<img src=x onerror="window.hacked = 1">ville'
+        Place.objects.create(name=name, state='KS', key=normalize(name), lat=40.0, lon=-99.0)
+        self.page.goto(f'{self.live_server_url}/map/')
+        self.page.locator('#start').press_sequentially('img')
+        expect(self.page.locator('#startPlaces li')).to_contain_text(['<img src=x'])
+        self.assert_nothing_ran()
 
     def test_what_the_visitor_types_is_shown_as_text(self):
         self.plan_from_the_dialog('<img src=x onerror="window.hacked = 1">, KS', 'Omega, OH')

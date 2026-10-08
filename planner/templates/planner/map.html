@@ -88,8 +88,13 @@
 
       <form id="askStart">
         <h2 id="question">Where are you right now?</h2>
-        <p class="sub">A US city and state, like "Chicago, IL".</p>
-        <input type="text" id="start" autocomplete="off" maxlength="200">
+        <p class="sub">A US city and state, like "Chicago, IL". Start typing and pick from the list.</p>
+        {# The list under the box is filled by the script, from GET /api/v1/places/, as the name is typed. #}
+        <div class="combo">
+          <input type="text" id="start" autocomplete="off" maxlength="200" role="combobox" aria-autocomplete="list"
+                 aria-expanded="false" aria-controls="startPlaces" aria-labelledby="question">
+          <ul class="suggest" id="startPlaces" role="listbox" aria-label="Places that match" hidden></ul>
+        </div>
         <div id="startError"></div>
         <div class="row">
           <button type="button" class="link" id="cancel" hidden>&larr; Back to the map</button>
@@ -102,9 +107,13 @@
       </form>
 
       <form id="askFinish" hidden>
-        <h2>Where are you headed?</h2>
+        <h2 id="questionTwo">Where are you headed?</h2>
         <p class="sub">Starting from <b id="fromName"></b>.</p>
-        <input type="text" id="finish" autocomplete="off" maxlength="200">
+        <div class="combo">
+          <input type="text" id="finish" autocomplete="off" maxlength="200" role="combobox" aria-autocomplete="list"
+                 aria-expanded="false" aria-controls="finishPlaces" aria-labelledby="questionTwo">
+          <ul class="suggest" id="finishPlaces" role="listbox" aria-label="Places that match" hidden></ul>
+        </div>
         <div id="finishError"></div>
         <div class="row">
           <button type="button" class="link" id="back">&larr; Back</button>

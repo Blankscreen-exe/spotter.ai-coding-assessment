@@ -156,6 +156,13 @@ dl.facts dd { margin: 0; font-weight: 600; }
 .dialog .sub { color: var(--muted); margin-bottom: 16px; }
 .dialog input[type=text] { width: 100%; font: inherit; font-size: 17px; color: var(--ink); padding: 11px 12px; margin-bottom: 14px;
                            border: 1px solid #9aa5b1; border-radius: 4px; }
+/* A place box, and under it the places offered while a name is being typed. The list lies over what is below. */
+.combo { position: relative; margin-bottom: 14px; }
+.dialog .combo input[type=text] { margin-bottom: 0; }
+.suggest { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; right: 0; margin: 0; padding: 4px; list-style: none;
+           background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 30px rgba(15, 23, 42, .18); }
+.suggest li { padding: 8px 10px; border-radius: 5px; cursor: pointer; }
+.suggest li:hover, .suggest li.on { background: var(--blue-soft); }
 .dialog .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .dialog .row .primary { margin-left: auto; }
 .examples { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line); display: grid; gap: 8px; }

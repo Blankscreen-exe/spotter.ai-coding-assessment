@@ -414,6 +414,43 @@ class RouteMapTests(TestCase):
     # is tested in a real browser: see test_page.py.
 
 
+class PlaceSearchTests(TestCase):
+    """GET /api/v1/places/?q=...: what the page's two location boxes ask as a name is typed."""
+
+    url = reverse('places')
+
+    @classmethod
+    def setUpTestData(cls):
+        create_trip_data()
+
+    def test_places_whose_name_starts_with_the_letters(self):
+        response = self.client.get(self.url, {'q': 'al'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'places': [{'name': 'Alpha, KS'}]})
+
+    def test_a_name_it_offers_is_one_the_route_endpoint_takes(self):
+        start = self.client.get(self.url, {'q': 'alp'}).json()['places'][0]['name']
+        finish = self.client.get(self.url, {'q': 'omega, o'}).json()['places'][0]['name']
+        with routing_mock():
+            planned = self.client.post(
+                reverse('route-plan'), {'start': start, 'finish': finish}, content_type='application/json'
+            )
+        self.assertEqual(planned.status_code, 200)
+
+    def test_nothing_typed_is_an_empty_list_not_an_error(self):
+        for query in ({}, {'q': ''}, {'q': 'a'}, {'q': 'zzzz'}):
+            response = self.client.get(self.url, query)
+            self.assertEqual((response.status_code, response.json()), (200, {'places': []}), query)
+
+    def test_a_browser_may_keep_the_answer(self):
+        self.assertEqual(self.client.get(self.url, {'q': 'al'}).headers['Cache-Control'], 'public, max-age=3600')
+
+    def test_it_only_reads(self):
+        response = self.client.post(self.url, {'q': 'al'}, content_type='application/json')
+        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.json()['error']['code'], 'method_not_allowed')
+
+
 class RouteLineTests(SimpleTestCase):
     """The route line kept and sent is a thinned copy of the provider's."""
 

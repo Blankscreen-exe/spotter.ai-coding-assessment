@@ -3,7 +3,7 @@ from django.test import SimpleTestCase, TestCase
 from planner.exceptions import LocationError
 from planner.management.commands.import_places import split_descriptor
 from planner.models import Place
-from planner.services.places import normalize, resolve_location
+from planner.services.places import normalize, resolve_location, suggest_places
 
 
 class NormalizeTests(SimpleTestCase):
@@ -103,3 +103,71 @@ class ResolveLocationTests(TestCase):
     def test_unknown_place(self):
         with self.assertRaisesMessage(LocationError, 'Could not find "Atlantis" in Texas'):
             resolve_location('Atlantis, TX')
+
+
+class SuggestPlacesTests(TestCase):
+    """What a search box is offered while a name is being typed."""
+
+    @classmethod
+    def setUpTestData(cls):
+        def place(name, state, land, lat=40.0, lon=-90.0, alias=False):
+            return Place(name=name, state=state, key=normalize(name), lat=lat, lon=lon, land_sqmi=land, is_alias=alias)
+
+        Place.objects.bulk_create(
+            [
+                place('Chicago', 'IL', 228, lat=41.84),
+                place('Chico', 'CA', 33, lat=39.76),
+                place('Chistochina', 'AK', 351, lat=62.57),
+                place('Chicago Heights', 'IL', 10, lat=41.51),
+                place('Springfield', 'IL', 60, lat=39.79),
+                place('Springfield', 'MO', 82, lat=37.19),
+                place('Springfield', 'MA', 32, lat=42.11),
+                place('Springfield', 'NJ', 5, lat=40.70),
+                place('Springfield', 'NJ', 3, lat=40.04),  # two places of one name in one state
+                place('St. Louis', 'MO', 62, lat=38.64),
+                place('Nashville-Davidson', 'TN', 475, lat=36.17, lon=-86.78),
+                place('Nashville', 'TN', 475, lat=36.17, lon=-86.78, alias=True),
+            ]
+        )
+
+    def names(self, typed):
+        return [str(place) for place in suggest_places(typed)]
+
+    def test_names_that_start_with_what_was_typed_largest_first(self):
+        self.assertEqual(self.names('chic'), ['Chicago, IL', 'Chico, CA', 'Chicago Heights, IL'])
+
+    def test_it_is_one_query(self):
+        with self.assertNumQueries(1):
+            suggest_places('chi')
+
+    def test_alaska_is_listed_after_the_rest_however_large(self):
+        self.assertEqual(self.names('chi'), ['Chicago, IL', 'Chico, CA', 'Chicago Heights, IL', 'Chistochina, AK'])
+
+    def test_case_spacing_and_abbreviations_do_not_matter(self):
+        for typed in ('st l', 'ST. LOU', '  saint louis '):
+            self.assertEqual(self.names(typed), ['St. Louis, MO'], typed)
+
+    def test_a_state_narrows_it_with_or_without_a_comma(self):
+        self.assertEqual(self.names('springfield, m'), ['Springfield, MO', 'Springfield, MA'])
+        self.assertEqual(self.names('springfield, mass'), ['Springfield, MA'])
+        self.assertEqual(self.names('springfield il'), ['Springfield, IL'])
+        self.assertEqual(self.names('Springfield, IL, USA'), ['Springfield, IL'])
+        self.assertEqual(self.names('springfield, zz'), [])
+
+    def test_a_name_is_offered_once(self):
+        self.assertEqual(self.names('springfield, nj'), ['Springfield, NJ'])
+        # A consolidated city and its short form are one place: the short form is the one offered.
+        self.assertEqual(self.names('nash'), ['Nashville, TN'])
+        self.assertEqual(self.names('nashville-d'), ['Nashville-Davidson, TN'])
+
+    def test_fewer_than_two_letters_find_nothing_and_ask_nothing(self):
+        with self.assertNumQueries(0):
+            for typed in ('', ' ', 'c', '4', ',', ', il'):
+                self.assertEqual(self.names(typed), [], typed)
+
+    def test_no_more_than_eight(self):
+        Place.objects.bulk_create(
+            Place(name=f'Dover {number}', state='OH', key=f'dover {number}', lat=40.0 + number / 100, lon=-81.0)
+            for number in range(12)
+        )
+        self.assertEqual(len(self.names('dover')), 8)

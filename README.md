@@ -22,7 +22,7 @@ with a 500 mile range that does 10 miles per gallon.
 
 ```bash
 docker compose up --build
-curl -X POST http://localhost:8000/api/v1/route/ \
+curl -X POST http://127.0.0.1:8000/api/v1/route/ \
   -H "Content-Type: application/json" \
   -d '{"start": "New York, NY", "finish": "Los Angeles, CA", "include_geometry": false}'
 ```
@@ -37,9 +37,11 @@ behind the design is in [docs/DECISIONS.md](docs/DECISIONS.md).
 ## Run it
 
 **With Docker** (PostgreSQL and Redis): `docker compose up --build`, then
-http://localhost:8000/. The first start runs the migrations and loads the
+http://127.0.0.1:8000/. The first start runs the migrations and loads the
 reference data, which takes about twenty seconds. The stack is published to
-this machine only.
+this machine only, on `127.0.0.1`. Use that address in curl and Postman, not
+`localhost`: some clients try the IPv6 loopback first, and on Windows that
+costs curl 0.2 seconds a request.
 
 **Without Docker** (SQLite, no services, no environment variables). Developed
 and tested on Python 3.14; Django 6.1 needs 3.12 or newer.
@@ -96,7 +98,7 @@ second stop and the route line shortened:
     "routing_provider": "osrm", "routing_api_calls": 1, "served_from": "routing provider",
     "stations_considered": 158, "elapsed_ms": 254.0
   },
-  "map_url": "http://localhost:8000/map/?start=Chicago%2C+IL&finish=Houston%2C+TX"
+  "map_url": "http://127.0.0.1:8000/map/?start=Chicago%2C+IL&finish=Houston%2C+TX"
 }
 ```
 
@@ -187,8 +189,8 @@ pip install -r requirements-dev.txt                    # adds the linter and the
 ruff check . && ruff format --check .
 ```
 
-217 tests, 95% line coverage of the Python code. The routing providers and
-Nominatim are mocked, and the suite always uses a private cache. Twenty-three
+233 tests, 95% line coverage of the Python code. The routing providers and
+Nominatim are mocked, and the suite always uses a private cache. Twenty-six
 of the tests drive the map page in a real browser; they need the development
 requirements, an installed Chrome or Edge and the network (the page loads
 Leaflet from a CDN), and are skipped without them, as in the Docker image. A
@@ -219,7 +221,10 @@ of it is needed to check the points above.
 
 - **A page that uses the API.** `/map/` (where `/` and every `map_url` lead)
   asks where from and where to, then shows the route, the stops and the fuel
-  bill. Two counters change the cost per stop and the starting fuel, and the
+  bill. The two location boxes offer places as a name is typed, from
+  `GET /api/v1/places/?q=chi`: one indexed query, about 2 ms, returning up to
+  eight names such as `{"places": [{"name": "Chicago, IL"}]}`. Two counters
+  change the cost per stop and the starting fuel, and the
   trip is planned again. Tabs along the bottom show the fuel in the tank along
   the trip, the plan as a table, neighbouring cost-per-stop settings, the plan
   as GeoJSON for [geojson.io](https://geojson.io/), and the API call behind

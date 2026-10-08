@@ -4,6 +4,8 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
+from django.db.models import Case, Value, When
+
 from ..exceptions import LocationError
 from ..models import Place
 
@@ -71,6 +73,15 @@ US_BOXES = (
     (51.0, 71.5, -180.0, -129.9),
     (18.9, 22.3, -160.3, -154.7),
 )
+
+# For the search box: how many places it is offered, and from how many letters.
+SUGGESTIONS = 8
+SUGGEST_FROM_LETTERS = 2
+# Ranked by land area alone, "chi" offers Chistochina before Chicago: Alaska's census
+# places cover thousands of square miles. Nor can the planner plan a drive to either of
+# these states (no road to one, and only Canadian fuel stops on the way to the other,
+# which the price data leaves out). So their places are listed after all the rest.
+LISTED_LAST = ('AK', 'HI')
 
 ABBREVIATIONS = {'st': 'saint', 'ste': 'sainte', 'ft': 'fort', 'mt': 'mount'}
 COORDINATES = re.compile(r'^\s*(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)\s*$')
@@ -173,3 +184,48 @@ def resolve_location(text: str) -> Location:
         options = '; '.join(str(place) for place in matches[:5])
         raise LocationError(f'"{query}" matches several places ({options}). Add the state, e.g. "City, ST".')
     raise LocationError(f'Could not find "{query}". Use "City, ST" or "lat,lon".')
+
+
+def suggest_places(typed: str, limit: int = SUGGESTIONS) -> list[Place]:
+    """Places whose name starts with what has been typed so far, for a search box. The largest come first.
+
+    "chi" finds Chicago. A state narrows it, with a comma or without: "springfield, m"
+    and "springfield mo" both keep to the states that start that way. Fewer than two
+    letters find nothing.
+    """
+    name, _, rest = typed.partition(',')
+    key, states = normalize(name), _states_starting(rest.partition(',')[0])
+    found = _places_starting(key, states, limit)
+    if not found and states is None and ' ' in key:
+        # No comma, and no place is called that: the last word may be the start of a state.
+        key, _, last = key.rpartition(' ')
+        found = _places_starting(key, _states_starting(last), limit)
+    return found
+
+
+def _states_starting(text: str) -> list[str] | None:
+    """The states whose code or name starts with this. None if there is nothing to go by."""
+    start = text.strip().lower()
+    if not start:
+        return None
+    return [code for code, name in STATES.items() if code.lower().startswith(start) or name.lower().startswith(start)]
+
+
+def _places_starting(key: str, states: list[str] | None, limit: int) -> list[Place]:
+    if len(key) < SUGGEST_FROM_LETTERS:
+        return []
+    places = Place.objects.filter(key__startswith=key)
+    if states is not None:
+        places = places.filter(state__in=states)
+    listed_last = Case(When(state__in=LISTED_LAST, then=Value(1)), default=Value(0))
+    # Between a consolidated city and its short form ("Nashville-Davidson", "Nashville"), which
+    # share a position, the short form wins. Between two places of one name in one state, the larger.
+    found, seen = [], set()
+    for place in places.order_by(listed_last, '-land_sqmi', '-is_alias', 'name', 'state', 'pk')[: limit * 3]:
+        marks = {str(place), (place.lat, place.lon)}
+        if seen.isdisjoint(marks):
+            found.append(place)
+            if len(found) == limit:
+                break
+        seen |= marks
+    return found

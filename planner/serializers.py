@@ -152,6 +152,18 @@ class TripSerializer(serializers.Serializer):
         return self.context['request'].build_absolute_uri(f'{reverse("route-map")}?{urlencode(self.context["asked"])}')
 
 
+# ---------- places for a search box ----------
+
+
+class PlaceSuggestionSerializer(serializers.Serializer):
+    """A place as a search box offers it. The name is also what the route endpoint takes as a start or finish."""
+
+    name = serializers.SerializerMethodField()
+
+    def get_name(self, place):
+        return str(place)
+
+
 # ---------- signing in ----------
 
 

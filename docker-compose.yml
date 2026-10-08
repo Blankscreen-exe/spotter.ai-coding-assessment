@@ -1,7 +1,7 @@
 # Local stack: the API on PostgreSQL with Redis as the route cache.
 #
 #   docker compose up --build
-#   http://localhost:8000/map/
+#   http://127.0.0.1:8000/map/
 #
 # The credentials below are for this local stack only.
 services:
@@ -49,7 +49,7 @@ services:
       # and timing for each request. DJANGO_DEBUG_TOOLBAR=false docker compose up
       # runs the stack without it.
       DJANGO_DEBUG_TOOLBAR: ${DJANGO_DEBUG_TOOLBAR:-true}
-      # Login for http://localhost:8000/admin/ on this local stack.
+      # Login for http://127.0.0.1:8000/admin/ on this local stack.
       DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-admin}
       DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:-fuelroute-demo}
     # Published to this machine only. The stack carries a published admin password

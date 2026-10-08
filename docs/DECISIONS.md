@@ -531,6 +531,27 @@ that the CI workflow had not run (3.17), and what `seed_admin` refuses (3.14).
   go beyond it. They stay, and the README says which is which.
 - *A hanging routing provider* can still occupy request threads (3.18).
 
+### 3.20 The two location boxes search as a name is typed
+
+The dialog's two boxes were plain text: a visitor had to know to write
+"Chicago, IL", and a name shared by several places came back as an error to
+correct. They now offer places while a name is being typed.
+
+| Question | Options | Chosen, and why |
+| --- | --- | --- |
+| Where do the names come from | Send all 32,058 places to the browser; search them in memory on the server; search the table | The table, through a new `GET /api/v1/places/?q=`. The whole list is about 500 KB for a page that needs eight names, and the table is already there. The page keeps what it has already been told, and the answer may be kept by the browser for an hour |
+| How the table is searched | A scan of the table; an index that serves `LIKE 'chi%'` | The index. PostgreSQL only uses one for a prefix when it is built with a pattern operator class, which the existing index on the name and state is not, so a second index was added. The query plan shows it in use: 79 rows read for "chi", 0.4 ms. The whole search takes about 2 ms |
+| What comes first | Largest land area; most fuel stations in the town; largest, with Alaska and Hawaii after the rest | The third. The Census file has no population, so land area stands in for size. Tried on fifty well-known cities by their first three to five letters, land area alone put the city first for 45 and stations-first for 39: Alaska's census places are thousands of square miles of wilderness, and "chi" offered Chistochina before Chicago. With those two states listed last it was 48, and 50 of 50 once a consolidated city's short form ("Nashville") is offered ahead of its full name. The planner cannot plan a drive to either state in any case |
+| What the list is on the page | The browser's own `datalist`; a list drawn by the page | Drawn by the page. With a `datalist` the browser decides what to show by comparing the letters typed with each name, so "st l" would not be shown "St. Louis", nor "ft w" "Fort Worth", although the server matches both |
+| Whether it picks for the visitor | Fill in the first match; offer and wait | Offer and wait. Enter sends what is typed unless an arrow key or a click has chosen a row, so a "lat,lon" or a town the list does not offer still goes through, and the box works as before if the search fails |
+| A rate limit | The route endpoint's; one of its own; none | None. It is one indexed query with no outside call, like reading the settings, and a limit would add two cache calls to a request that takes 2 ms |
+
+A state narrows the list, with a comma or without ("springfield, m",
+"springfield mo"). A consolidated city and its short form, such as
+Nashville-Davidson and Nashville, are offered once, under the short form.
+What the list shows is written as text, never as markup, like everything else
+that comes from data.
+
 ## 4. Things testing caught
 
 - **GET ignored a default.** Django REST framework reads a query string like an
@@ -571,10 +592,18 @@ that the CI workflow had not run (3.17), and what `seed_admin` refuses (3.14).
   looked at the same instant. It was replaced by one that sets up the exact
   moment and fails on the old code every time.
 
+- **`localhost` cost a fifth of a second per request.** Timing the place
+  search on the Docker stack gave 240 ms where the search itself takes 2. The
+  stack had just been published to `127.0.0.1` only (3.19), and curl on Windows
+  tries the IPv6 loopback first when given the name `localhost`: 205 ms to
+  connect, against 1 ms by address. Browsers were not affected. The README, the
+  Postman collection and the examples now use `127.0.0.1`, as Django's own
+  development server does.
+
 ## 5. How it is verified
 
-- 217 automated tests covering 95% of the Python lines, run on both SQLite and
-  PostgreSQL 17. Twenty-three of them drive the page in a real browser; those
+- 233 automated tests covering 95% of the Python lines, run on both SQLite and
+  PostgreSQL 17. Twenty-six of them drive the page in a real browser; those
   run where a browser is installed and are skipped in the Docker image.
 - A GitHub Actions workflow runs the linter and both test runs on every push.
 - The rate limit was exercised against the running stack: with the limit then at

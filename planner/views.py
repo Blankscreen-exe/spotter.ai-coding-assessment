@@ -3,6 +3,7 @@ from django.db import DatabaseError, connection
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
+from django.utils.cache import patch_cache_control
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.response import Response
@@ -15,6 +16,7 @@ from .exceptions import InvalidLogin
 from .permissions import CanChangeSettings
 from .serializers import (
     EditorSerializer,
+    PlaceSuggestionSerializer,
     RouteRequestSerializer,
     ServerSettingsSerializer,
     SettingsChangeSerializer,
@@ -22,6 +24,7 @@ from .serializers import (
     TripSerializer,
 )
 from .services import server_settings
+from .services.places import suggest_places
 from .services.stations import get_index
 from .services.trip import plan_trip
 from .throttling import LoginRateThrottle, RouteRateThrottle
@@ -108,6 +111,21 @@ class SessionView(APIView):
         return Response(EditorSerializer(request.user).data)
 
 
+class PlaceSearchView(APIView):
+    """Places whose name starts with ?q=, for a search box: GET /api/v1/places/?q=chi.
+
+    Open and read-only, like the route endpoint. One indexed query and no outside call, so
+    it carries no rate limit; a browser may keep an answer for an hour, since the list
+    only changes when the reference data is imported again.
+    """
+
+    def get(self, request):
+        places = suggest_places(request.query_params.get('q', '')[:120])
+        response = Response({'places': PlaceSuggestionSerializer(places, many=True).data})
+        patch_cache_control(response, public=True, max_age=3600)
+        return response
+
+
 @ensure_csrf_cookie  # the page's script needs the token to sign in and to save settings
 def route_map(request):
     """The page people use. It plans nothing itself: its script calls the API above."""
@@ -119,6 +137,7 @@ def route_map(request):
             'author': author_for_page(),
             'config': {
                 'apiUrl': reverse('route-plan'),
+                'placesUrl': reverse('places'),
                 'healthUrl': reverse('health'),
                 'settingsUrl': reverse('settings'),
                 'sessionUrl': reverse('session'),

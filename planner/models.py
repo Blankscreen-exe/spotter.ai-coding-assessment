@@ -32,7 +32,12 @@ class Place(models.Model):
     source = models.CharField(max_length=12, choices=SOURCE_CHOICES, default=SOURCE_CENSUS)
 
     class Meta:
-        indexes = [models.Index(fields=['key', 'state'], name='place_key_state_idx')]
+        indexes = [
+            models.Index(fields=['key', 'state'], name='place_key_state_idx'),
+            # For "names starting with ...", which the search box asks. PostgreSQL only uses an
+            # index for LIKE 'chi%' when it is built this way; other databases ignore the class.
+            models.Index(fields=['key'], name='place_key_prefix_idx', opclasses=['varchar_pattern_ops']),
+        ]
         constraints = [
             models.CheckConstraint(condition=Q(lat__gte=-90) & Q(lat__lte=90), name='place_lat_in_range'),
             models.CheckConstraint(condition=Q(lon__gte=-180) & Q(lon__lte=180), name='place_lon_in_range'),
