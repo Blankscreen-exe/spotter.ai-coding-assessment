@@ -599,6 +599,16 @@ that comes from data.
   connect, against 1 ms by address. Browsers were not affected. The README, the
   Postman collection and the examples now use `127.0.0.1`, as Django's own
   development server does.
+- **The browser tests failed on GitHub, and one run in eight on Linux.** They
+  had passed every time on Windows. Run again and again in a Linux container,
+  the failure appeared: a server error while reading the stations, with rows of
+  the wrong shape or a missing price. On SQLite the test database is a single
+  in-memory connection, which Django shares with its test server; that server
+  answers each request on a thread of its own, and the page sends several
+  requests at once. Two threads reading through one connection got each other's
+  rows. The test server now answers one request at a time, after which 25 runs
+  in a row passed. A real server is not affected: there every thread has its
+  own connection.
 
 ## 5. How it is verified
 

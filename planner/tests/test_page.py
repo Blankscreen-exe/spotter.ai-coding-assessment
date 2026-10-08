@@ -17,6 +17,8 @@ import unittest
 
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.core.cache import cache
+from django.core.servers.basehttp import WSGIServer
+from django.test.testcases import LiveServerThread, QuietWSGIRequestHandler
 
 from planner.models import Place
 from planner.services.places import normalize
@@ -50,8 +52,25 @@ def launch(playwright):
 
 
 @unittest.skipIf(sync_playwright is None, 'Playwright is not installed (see requirements-dev.txt).')
+class OneAtATimeServerThread(LiveServerThread):
+    """The test server, answering one request at a time.
+
+    On SQLite the test database lives in memory behind a single connection, which Django shares
+    with the test server. Its usual server gives every request a thread of its own, and the page
+    sends several requests at once (the health check, the plan, the place search). Two threads
+    reading through that one connection at the same moment get each other's rows: about one run
+    in eight failed with an IndexError or a None where a price should be. Served in turn, they
+    cannot. A real server is not affected, since there every thread has its own connection.
+    """
+
+    def _create_server(self, connections_override=None):
+        return WSGIServer((self.host, self.port), QuietWSGIRequestHandler, allow_reuse_address=False)
+
+
 class PageTestCase(StaticLiveServerTestCase):
     """The test trip in the database, the routing provider mocked, and a fresh browser page on the live server."""
+
+    server_thread_class = OneAtATimeServerThread
 
     # The database is emptied after each of these tests, settings rows included. The server then
     # runs on the defaults in conf.py, which are the same values.
